@@ -36,7 +36,7 @@ describe("messages", () => {
       paging: { before: null, after: null },
     });
 
-    await api(`/messages/${id}/read`, { method: "POST", key });
+    await api(`/messages/${id}`, { key }); // reading marks it read
     const unread = (await (await api("/messages?unread=true", { key })).json()) as { messages: any[] };
     expect(unread.messages).toEqual([]);
   });
@@ -118,7 +118,7 @@ describe("messages", () => {
       attachments: [{ index: 0, filename: "notes.txt", type: "text/plain", size: 10, disposition: "attachment" }],
       headers: expect.arrayContaining([{ key: "subject", value: "First" }]),
       created_at: expect.any(Number),
-      read_at: null,
+      read_at: expect.any(Number), // reading marks it read
       deleted_at: null,
     });
   });
@@ -145,7 +145,6 @@ describe("messages", () => {
 
     const list = (await (await api("/messages", { key })).json()) as { messages: any[] };
     expect(list.messages.map((m) => [m.id, m.deleted_at])).toEqual([[id, null]]);
-    expect((await api(`/messages/${id}/read`, { method: "POST", key })).status).toBe(200);
     // Restoring again, or restoring someone else's message, is a 404.
     expect((await api(`/messages/${id}/restore`, { method: "POST", key })).status).toBe(404);
     const other = await createInbox("other");
@@ -162,17 +161,21 @@ describe("messages", () => {
     expect((await api(`/messages/${id}/attachments/5`, { key })).status).toBe(404);
   });
 
-  it("marks read and soft-deletes, keeping the stored mail", async () => {
+  it("marks read on reading, and can be put back to unread", async () => {
     const { key, id } = await setup();
-    expect((await api(`/messages/${id}/read`, { method: "POST", key })).status).toBe(200);
     const readAt = ((await (await api(`/messages/${id}`, { key })).json()) as any).read_at;
     expect(readAt).toEqual(expect.any(Number));
-    // Marking it read again keeps the first time.
-    await api(`/messages/${id}/read`, { method: "POST", key });
+    // Reading it again keeps the first time.
     expect(((await (await api(`/messages/${id}`, { key })).json()) as any).read_at).toBe(readAt);
 
+    expect((await api(`/messages/${id}/unread`, { method: "POST", key })).status).toBe(200);
+    expect(((await (await api(`/messages/${id}`, { key })).json()) as any).read_at).toEqual(expect.any(Number));
+  });
+
+  it("soft-deletes, keeping the stored mail", async () => {
+    const { key, id } = await setup();
     expect((await api(`/messages/${id}`, { method: "DELETE", key })).status).toBe(200);
-    expect((await api(`/messages/${id}/read`, { method: "POST", key })).status).toBe(404);
+    expect((await api(`/messages/${id}/unread`, { method: "POST", key })).status).toBe(404);
     expect((await api(`/messages/${id}`, { method: "DELETE", key })).status).toBe(404);
     const list = (await (await api("/messages", { key })).json()) as { messages: unknown[] };
     expect(list.messages).toEqual([]);

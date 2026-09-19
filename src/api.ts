@@ -110,18 +110,25 @@ function findMessage(env: Env, inboxId: string, id: string) {
     .first<{ direction: string; attachments: string; created_at: number; read_at: number | null; deleted_at: number | null }>();
 }
 
+// Reading a message marks it read, keeping the first time. POST /messages/:id/unread undoes it.
 app.get("/messages/:id", async (c) => {
   const id = c.req.param("id");
   const row = await findMessage(c.env, c.get("inbox").id, id);
   const stored = row && (await loadMessage(c.env, c.get("inbox").id, id));
   if (!row || !stored) return c.json({ error: "Message not found" }, 404);
+
+  let readAt = row.read_at;
+  if (readAt === null && row.deleted_at === null) {
+    readAt = Date.now();
+    await c.env.DB.prepare("UPDATE messages SET read_at = ? WHERE id = ?").bind(readAt, id).run();
+  }
   return c.json({
     id,
     ...stored,
     attachments: stored.attachments.map((a, index) => ({ index, ...a })),
     direction: row.direction,
     created_at: row.created_at,
-    read_at: row.read_at,
+    read_at: readAt,
     deleted_at: row.deleted_at,
   });
 });
@@ -142,12 +149,11 @@ app.get("/messages/:id/attachments/:index", async (c) => {
   });
 });
 
-app.post("/messages/:id/read", async (c) => {
-  // Keeps the first read time if it is already read.
+app.post("/messages/:id/unread", async (c) => {
   const { meta } = await c.env.DB.prepare(
-    "UPDATE messages SET read_at = COALESCE(read_at, ?) WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL",
+    "UPDATE messages SET read_at = NULL WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL",
   )
-    .bind(Date.now(), c.req.param("id"), c.get("inbox").id)
+    .bind(c.req.param("id"), c.get("inbox").id)
     .run();
   if (meta.changes === 0) return c.json({ error: "Message not found" }, 404);
   return c.json({ ok: true });
