@@ -1,0 +1,23 @@
+{
+  "name": "byagent-email",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "test": "vitest run",
+    "types": "wrangler types --config wrangler.example.jsonc --include-env=false",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.13.8",
+    "postal-mime": "^3.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.1.13",
+    "typescript": "^5.9.3",
+    "vitest": "~4.1",
+    "wrangler": "^4.135.0"
+  }
+}

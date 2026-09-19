@@ -1,0 +1,24 @@
+{
+  "name": "byagent-email",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "vars": {
+    "DOMAIN": "email.example.com",
+    "RETENTION_DAYS": "7"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "byagent-email",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "MAIL", "bucket_name": "byagent-email" }],
+  "queues": {
+    "producers": [{ "binding": "WEBHOOKS", "queue": "byagent-email-webhooks" }],
+    "consumers": [{ "queue": "byagent-email-webhooks", "max_retries": 4 }]
+  },
+  "send_email": [{ "name": "EMAIL" }],
+  "triggers": { "crons": ["0 3 * * *"] }
+}

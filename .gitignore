@@ -19,3 +19,11 @@ Thumbs.db
 node_modules/
 dist/
 build/
+
+# Local planning docs
+docs/superpowers/
+
+# Wrangler
+wrangler.jsonc
+.dev.vars
+.wrangler/
