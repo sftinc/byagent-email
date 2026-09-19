@@ -63,6 +63,8 @@ Enabling Email Routing replaces the domain's MX records, so use a domain (or sub
 
 To add or change the API hostname later, set `routes` in `wrangler.jsonc` to `[{ "pattern": "api.example.com", "custom_domain": true }]` and redeploy.
 
+Deletes are soft everywhere: a deleted inbox, webhook or message disappears from the API, but its database row and stored mail are kept.
+
 ## Admin API
 
 All admin calls use `Authorization: Bearer <ADMIN_KEY>`.
@@ -72,8 +74,6 @@ All admin calls use `Authorization: Bearer <ADMIN_KEY>`.
 curl -X POST $URL/admin/inboxes -H "Authorization: Bearer $ADMIN_KEY" -d '{"address":"claude@example.com"}'
 # → {"address":"claude@example.com","api_key":"…"}
 ```
-
-Deletes are soft everywhere: a deleted inbox, webhook or message disappears from the API, but its database row and stored mail are kept.
 
 Inboxes can be on any domain you've set up for this Worker (see Setup). Creating an inbox checks that the domain's MX records point at Cloudflare Email Routing, which catches typos and domains that aren't set up yet. It can't confirm that the catch-all rule targets this Worker, so check that step in the dashboard.
 
