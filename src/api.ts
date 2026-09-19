@@ -4,7 +4,7 @@ import { createMiddleware } from "hono/factory";
 import { admin } from "./admin";
 import { randomToken, sha256, uuidv7 } from "./crypto";
 import type { Env, Inbox } from "./env";
-import { type Direction, loadMessage, saveSent, summarize } from "./mail";
+import { type Attachment, loadAttachment, loadMessage, saveSent } from "./mail";
 import { buildEmail } from "./send";
 
 type App = { Bindings: Env; Variables: { inbox: Inbox } };
@@ -72,10 +72,11 @@ app.get("/messages", async (c) => {
   // Fetch one extra row to learn whether there's more in the direction we're paging.
   const cursor = after ? " AND id > ? ORDER BY id ASC" : before ? " AND id < ? ORDER BY id DESC" : " ORDER BY id DESC";
   const { results } = await c.env.DB.prepare(
-    `SELECT id, direction, from_addr, from_name, recipients, subject, read, created_at, deleted_at FROM messages WHERE ${where}${cursor} LIMIT 21`,
+    `SELECT id, direction, from_addr, from_name, recipients, subject, attachments, read, created_at, deleted_at
+     FROM messages WHERE ${where}${cursor} LIMIT 21`,
   )
     .bind(...params, ...(after || before ? [after || before] : []))
-    .all<{ id: string; from_addr: string; from_name: string; recipients: string; read: number }>();
+    .all<{ id: string; from_addr: string; from_name: string; recipients: string; attachments: string; read: number }>();
   const more = results.length > 20;
   const page = results.slice(0, 20);
   if (after) page.reverse();
@@ -94,26 +95,29 @@ app.get("/messages", async (c) => {
       ...m,
       from: { name: from_name, address: from_addr },
       recipients: m.recipients ? m.recipients.split(",") : [],
+      attachments: (JSON.parse(m.attachments) as Attachment[]).map((a, index) => ({ index, ...a })),
       read: m.read === 1,
     })),
     paging: { before: hasOlder ? oldest : null, after: hasNewer ? newest : null },
   });
 });
 
-async function findMessage(env: Env, inboxId: string, id: string) {
+function findMessage(env: Env, inboxId: string, id: string) {
   // Deleted messages are still readable by id; only changing them 404s.
-  return env.DB.prepare("SELECT direction, read, created_at, deleted_at FROM messages WHERE id = ? AND inbox_id = ?")
+  return env.DB.prepare("SELECT direction, attachments, read, created_at, deleted_at FROM messages WHERE id = ? AND inbox_id = ?")
     .bind(id, inboxId)
-    .first<{ direction: Direction; read: number; created_at: number; deleted_at: number | null }>();
+    .first<{ direction: string; attachments: string; read: number; created_at: number; deleted_at: number | null }>();
 }
 
 app.get("/messages/:id", async (c) => {
   const id = c.req.param("id");
   const row = await findMessage(c.env, c.get("inbox").id, id);
-  const email = row && (await loadMessage(c.env, c.get("inbox").id, id, row.direction));
-  if (!row || !email) return c.json({ error: "Message not found" }, 404);
+  const stored = row && (await loadMessage(c.env, c.get("inbox").id, id));
+  if (!row || !stored) return c.json({ error: "Message not found" }, 404);
   return c.json({
-    ...summarize(id, email),
+    id,
+    ...stored,
+    attachments: stored.attachments.map((a, index) => ({ index, ...a })),
     direction: row.direction,
     read: row.read === 1,
     created_at: row.created_at,
@@ -123,16 +127,16 @@ app.get("/messages/:id", async (c) => {
 
 app.get("/messages/:id/attachments/:index", async (c) => {
   const id = c.req.param("id");
+  const index = Number(c.req.param("index"));
   const row = await findMessage(c.env, c.get("inbox").id, id);
-  const email = row && (await loadMessage(c.env, c.get("inbox").id, id, row.direction));
-  const attachment = email?.attachments[Number(c.req.param("index"))];
-  if (!attachment) return c.json({ error: "Attachment not found" }, 404);
-  const filename = attachment.filename ?? "attachment";
-  const asciiSafe = filename.replace(/["\\\r\n]/g, "").replace(/[^\x00-\x7f]/g, "");
-  return new Response(attachment.content, {
+  const attachment = row && (JSON.parse(row.attachments) as Attachment[])[index];
+  const file = attachment && (await loadAttachment(c.env, c.get("inbox").id, id, index));
+  if (!file) return c.json({ error: "Attachment not found" }, 404);
+  const asciiSafe = attachment.filename.replace(/["\\\r\n]/g, "").replace(/[^\x00-\x7f]/g, "");
+  return new Response(file.body, {
     headers: {
-      "Content-Type": attachment.mimeType,
-      "Content-Disposition": `attachment; filename="${asciiSafe}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      "Content-Type": attachment.type,
+      "Content-Disposition": `attachment; filename="${asciiSafe}"; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`,
     },
   });
 });
@@ -230,10 +234,10 @@ app.post("/send", async (c) => {
   if (body.reply_to_id !== undefined) {
     const replyTo = typeof body.reply_to_id === "string" ? body.reply_to_id : "";
     const row = replyTo ? await findMessage(c.env, inbox.id, replyTo) : null;
-    const parent = row && (await loadMessage(c.env, inbox.id, replyTo, row.direction));
-    if (!parent?.messageId) return c.json({ error: "`reply_to_id` is not a message in this inbox" }, 400);
-    const references = [...(parent.references?.split(/\s+/).filter(Boolean) ?? []), parent.messageId];
-    built.message.headers = { "In-Reply-To": parent.messageId, References: references.join(" ") };
+    const parent = row && (await loadMessage(c.env, inbox.id, replyTo));
+    if (!parent?.message_id) return c.json({ error: "`reply_to_id` is not a message in this inbox" }, 400);
+    const references = [...parent.references, parent.message_id];
+    built.message.headers = { "In-Reply-To": parent.message_id, References: references.join(" ") };
   }
   let messageId: string;
   try {

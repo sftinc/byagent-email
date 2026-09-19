@@ -10,17 +10,26 @@ describe("incoming mail", () => {
     expect(message.setReject).toHaveBeenCalledWith("Unknown recipient");
   });
 
-  it("stores the raw email and a message row", async () => {
+  it("stores the parsed message, its attachments and a row", async () => {
     await createInbox("agent");
-    const raw = eml({ subject: "Report" });
+    const raw = eml({ subject: "Report", attachment: { filename: "notes.txt", content: "file body" } });
     const message = await receive(raw, "Agent@Email.Example.com");
     expect(message.setReject).not.toHaveBeenCalled();
 
     const { id: inboxId } = (await env.DB.prepare("SELECT id FROM inboxes").first<{ id: string }>())!;
     const row = await env.DB.prepare("SELECT * FROM messages").first<Record<string, unknown>>();
-    expect(row).toMatchObject({ inbox_id: inboxId, from_addr: "sender@example.org", subject: "Report", read: 0 });
-    const stored = await env.MAIL.get(`${inboxId}/${row!.id}.eml`);
-    expect(await stored!.text()).toBe(raw);
+    expect(row).toMatchObject({
+      inbox_id: inboxId,
+      from_addr: "sender@example.org",
+      from_name: "Sender",
+      subject: "Report",
+      read: 0,
+      attachments: JSON.stringify([{ filename: "notes.txt", type: "text/plain", size: 10, disposition: "attachment" }]),
+    });
+
+    const stored = await (await env.MAIL.get(`${inboxId}/${row!.id}/message.json`))!.json<any>();
+    expect(stored).toMatchObject({ subject: "Report", text: "Hi there\n", from: { name: "Sender", address: "sender@example.org" } });
+    expect(await (await env.MAIL.get(`${inboxId}/${row!.id}/0`))!.text()).toBe("file body\n");
   });
 
   it("queues one job per webhook", async () => {

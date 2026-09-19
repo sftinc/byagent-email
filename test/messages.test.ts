@@ -27,6 +27,7 @@ describe("messages", () => {
           from: { name: "Sender", address: "sender@example.org" },
           recipients: ["agent@email.example.com"],
           subject: "First",
+          attachments: [{ index: 0, filename: "notes.txt", type: "text/plain", size: 10, disposition: "attachment" }],
           read: false,
           created_at: expect.any(Number),
           deleted_at: null,
@@ -114,7 +115,7 @@ describe("messages", () => {
       date: expect.any(String),
       text: "Hi there\n",
       html: null,
-      attachments: [{ index: 0, filename: "notes.txt", type: "text/plain", size: 10 }],
+      attachments: [{ index: 0, filename: "notes.txt", type: "text/plain", size: 10, disposition: "attachment" }],
       headers: expect.arrayContaining([{ key: "subject", value: "First" }]),
       read: false,
       created_at: expect.any(Number),
@@ -171,7 +172,7 @@ describe("messages", () => {
     expect((await api(`/messages/${id}`, { method: "DELETE", key })).status).toBe(404);
     const list = (await (await api("/messages", { key })).json()) as { messages: unknown[] };
     expect(list.messages).toEqual([]);
-    expect((await env.MAIL.list()).objects).toHaveLength(1);
+    expect((await env.MAIL.list()).objects).toHaveLength(2); // message.json and its attachment
 
     // Deleted mail is listed with ?deleted=true, and can still be read by id.
     const deleted = (await (await api("/messages?deleted=true", { key })).json()) as { messages: any[] };

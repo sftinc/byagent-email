@@ -37,6 +37,7 @@ describe("sent mail", () => {
         from: { name: "", address: inbox.address },
         recipients: ["a@x.com", "b@x.com", "c@x.com"],
         subject: "Report",
+        attachments: [{ index: 0, filename: "a.txt", type: "text/plain", size: 2, disposition: "attachment" }],
         created_at: expect.any(Number),
         read: true,
         deleted_at: null,
@@ -64,7 +65,7 @@ describe("sent mail", () => {
       date: expect.any(String),
       text: "See attached",
       html: null,
-      attachments: [{ index: 0, filename: "a.txt", type: "text/plain", size: 2 }],
+      attachments: [{ index: 0, filename: "a.txt", type: "text/plain", size: 2, disposition: "attachment" }],
       headers: [],
       read: true,
       created_at: expect.any(Number),
@@ -87,12 +88,12 @@ describe("sent mail", () => {
     expect((await api("/messages?direction=sent", { key: inbox.api_key })).status).toBe(400);
   });
 
-  it("soft-deletes a sent message, keeping its file", async () => {
+  it("soft-deletes a sent message, keeping its files", async () => {
     const inbox = await createInbox("agent");
     const { id } = await sendOne(inbox.api_key);
     expect((await api(`/messages/${id}`, { method: "DELETE", key: inbox.api_key })).status).toBe(200);
     expect(await list(inbox.api_key, "?direction=all")).toEqual([]);
-    expect((await env.MAIL.list()).objects).toHaveLength(1);
+    expect((await env.MAIL.list()).objects).toHaveLength(2); // message.json and its attachment
   });
 
   it("stores nothing when the send fails", async () => {

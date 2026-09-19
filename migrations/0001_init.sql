@@ -35,7 +35,8 @@ CREATE TABLE messages (
   from_name  TEXT NOT NULL,     -- '' when the sender has no display name
   recipients TEXT NOT NULL,     -- to, cc and (for sent mail) bcc, comma-separated
   -- content
-  subject    TEXT,
+  subject     TEXT,
+  attachments TEXT NOT NULL,    -- [{filename, type, size, disposition}], '[]' when there are none
   -- state
   read       INTEGER NOT NULL DEFAULT 0,
   -- dates

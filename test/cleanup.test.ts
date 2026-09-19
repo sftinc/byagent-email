@@ -10,11 +10,11 @@ const DAY = 86_400_000;
 async function addMessage(id: string, createdAt: number) {
   await env.DB.prepare("INSERT OR IGNORE INTO inboxes (id, address, key_hash, created_at, updated_at) VALUES ('i1', 'a@x.com', 'h', 0, 0)").run();
   await env.DB.prepare(
-    "INSERT INTO messages (id, inbox_id, direction, from_addr, from_name, recipients, subject, created_at) VALUES (?, 'i1', 'in', 's@x.com', '', '', 'x', ?)",
+    "INSERT INTO messages (id, inbox_id, direction, from_addr, from_name, recipients, subject, attachments, created_at) VALUES (?, 'i1', 'in', 's@x.com', '', '', 'x', '[]', ?)",
   )
     .bind(id, createdAt)
     .run();
-  await env.MAIL.put(`i1/${id}.eml`, "raw");
+  await env.MAIL.put(`i1/${id}/message.json`, "{}");
 }
 
 describe("cleanup", () => {
@@ -29,7 +29,7 @@ describe("cleanup", () => {
       { id: "old", deleted_at: expect.any(Number) },
     ]);
     const keys = (await env.MAIL.list()).objects.map((o) => o.key).sort();
-    expect(keys).toEqual(["i1/new.eml", "i1/old.eml"]);
+    expect(keys).toEqual(["i1/new/message.json", "i1/old/message.json"]);
   });
 
   it("does nothing when RETENTION_DAYS is not a positive number", async () => {

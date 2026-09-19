@@ -1,7 +1,7 @@
 import PostalMime from "postal-mime";
 import { uuidv7 } from "./crypto";
 import type { Env } from "./env";
-import { addresses, mailKey } from "./mail";
+import { addresses, fromEmail, saveMessage } from "./mail";
 
 export async function handleEmail(message: ForwardableEmailMessage, env: Env): Promise<void> {
   const inbox = await env.DB.prepare("SELECT id FROM inboxes WHERE address = ? AND deleted_at IS NULL")
@@ -12,13 +12,15 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env): P
     return;
   }
 
-  const raw = await new Response(message.raw).arrayBuffer();
-  const email = await PostalMime.parse(raw);
+  // Mail is parsed once, here, and stored as JSON plus one file per attachment.
+  const email = await PostalMime.parse(await new Response(message.raw).arrayBuffer());
+  const { message: stored, files } = fromEmail(email);
   const id = uuidv7();
 
-  await env.MAIL.put(mailKey(inbox.id, id, "in"), raw);
+  await saveMessage(env, inbox.id, id, stored, files);
   await env.DB.prepare(
-    "INSERT INTO messages (id, inbox_id, direction, from_addr, from_name, recipients, subject, created_at) VALUES (?, ?, 'in', ?, ?, ?, ?, ?)",
+    `INSERT INTO messages (id, inbox_id, direction, from_addr, from_name, recipients, subject, attachments, created_at)
+     VALUES (?, ?, 'in', ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -27,6 +29,7 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env): P
       email.from?.name ?? "",
       [...addresses(email.to), ...addresses(email.cc)].join(",").toLowerCase(),
       email.subject ?? null,
+      JSON.stringify(stored.attachments),
       Date.now(),
     )
     .run();

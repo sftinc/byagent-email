@@ -1,6 +1,6 @@
 import { hmacSha256 } from "./crypto";
 import type { Env, WebhookJob } from "./env";
-import { loadMessage, summarize } from "./mail";
+import { loadMessage } from "./mail";
 
 // Returns true when the job is finished (delivered, or nothing left to deliver).
 export async function deliverWebhook(job: WebhookJob, env: Env): Promise<boolean> {
@@ -13,10 +13,11 @@ export async function deliverWebhook(job: WebhookJob, env: Env): Promise<boolean
   )
     .bind(job.messageId, job.webhookId)
     .first<{ url: string; secret: string; inbox_id: string; address: string }>();
-  const email = hook && (await loadMessage(env, hook.inbox_id, job.messageId, "in"));
-  if (!hook || !email) return true;
+  const stored = hook && (await loadMessage(env, hook.inbox_id, job.messageId));
+  if (!hook || !stored) return true;
 
-  const { html, cc, bcc, headers, ...message } = summarize(job.messageId, email);
+  const { html, cc, bcc, headers, attachments, ...rest } = stored;
+  const message = { id: job.messageId, ...rest, attachments: attachments.map((a, index) => ({ index, ...a })) };
   const body = JSON.stringify({ inbox: hook.address, message });
   const timestamp = String(Date.now());
   const signature = await hmacSha256(hook.secret, `${timestamp}.${body}`);

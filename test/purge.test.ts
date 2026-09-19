@@ -14,7 +14,8 @@ async function inboxWithTrash() {
     hooks.push((await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url } })).json()) as { id: string });
   }
   await api(`/webhooks/${hooks[1].id}`, { method: "DELETE", key: inbox.api_key });
-  for (const subject of ["Keep", "Drop"]) await receive(eml({ subject }), inbox.address);
+  await receive(eml({ subject: "Keep" }), inbox.address);
+  await receive(eml({ subject: "Drop", attachment: { filename: "a.txt", content: "bytes" } }), inbox.address);
   const { messages } = (await (await api("/messages", { key: inbox.api_key })).json()) as { messages: any[] };
   const drop = messages.find((m) => m.subject === "Drop")!.id;
   await api(`/messages/${drop}`, { method: "DELETE", key: inbox.api_key });
@@ -30,7 +31,8 @@ describe("purge", () => {
 
     expect(await counts("messages")).toBe(1);
     expect(await counts("webhooks")).toBe(1);
-    expect((await env.MAIL.list()).objects).toHaveLength(1);
+    // The purged message's attachment went with it; the kept message's file stays.
+    expect((await env.MAIL.list()).objects.map((o) => o.key.split("/").pop())).toEqual(["message.json"]);
     const list = (await (await api("/messages", { key: inbox.api_key })).json()) as { messages: any[] };
     expect(list.messages.map((m) => m.subject)).toEqual(["Keep"]);
   });
