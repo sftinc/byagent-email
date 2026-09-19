@@ -52,6 +52,19 @@ describe("messages", () => {
     expect(await from("nobody")).toEqual([]);
   });
 
+  it("filters by part of the subject, ignoring case", async () => {
+    const inbox = await createInbox("agent");
+    await receive(eml({ subject: "March invoice" }), inbox.address);
+    await receive(eml({ subject: "Lunch plans" }), inbox.address);
+    const subjects = async (q: string) =>
+      ((await (await api(`/messages?subject=${encodeURIComponent(q)}`, { key: inbox.api_key })).json()) as { messages: any[] })
+        .messages.map((m) => m.subject);
+
+    expect(await subjects("INVOICE")).toEqual(["March invoice"]);
+    expect(await subjects("nch")).toEqual(["Lunch plans"]);
+    expect(await subjects("nothing")).toEqual([]);
+  });
+
   it("pages 20 at a time, newest first, with cursors for both directions", async () => {
     const inbox = await createInbox("agent");
     for (let i = 0; i < 25; i++) await receive(eml({ subject: `M${i}` }), inbox.address);

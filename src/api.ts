@@ -46,7 +46,7 @@ app.get("/messages", async (c) => {
     params.push(direction);
   }
   if (c.req.query("unread") === "true") where += " AND read = 0";
-  for (const [param, column] of [["from", "from_addr"], ["to", "recipients"]]) {
+  for (const [param, column] of [["from", "from_addr"], ["to", "recipients"], ["subject", "subject"]]) {
     const value = c.req.query(param);
     if (value) {
       where += ` AND instr(lower(${column}), lower(?)) > 0`;

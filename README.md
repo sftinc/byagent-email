@@ -91,7 +91,7 @@ All agent calls use `Authorization: Bearer <api_key>`.
 | Method | Path | |
 |---|---|---|
 | `POST` | `/send` | `{to, cc?, bcc?, subject, text?, html?, attachments?: [{filename, type, content (base64)}]}` → `{id, messageId}`. The sent message is saved, and `id` works with the `/messages/:id` routes. |
-| `GET` | `/messages?direction=in&unread=true&from=<text>&to=<text>&before=<id>&after=<id>` | List messages, 20 per page, newest first → `{messages, paging: {before, after}}`. For older mail pass `paging.before` as `before`, for newer mail `paging.after` as `after`; `null` means there is no more that way. `direction` is `in` (received, the default), `out` (sent) or `all`. Each message lists its `recipients` (to, cc and, for sent mail, bcc). `from` matches part of the sender address and `to` part of any recipient, ignoring case (e.g. `@example.com`). |
+| `GET` | `/messages?direction=in&unread=true&from=<text>&to=<text>&subject=<text>&before=<id>&after=<id>` | List messages, 20 per page, newest first → `{messages, paging: {before, after}}`. For older mail pass `paging.before` as `before`, for newer mail `paging.after` as `after`; `null` means there is no more that way. `direction` is `in` (received, the default), `out` (sent) or `all`. Each message lists its `recipients` (to, cc and, for sent mail, bcc). `from` matches part of the sender address, `to` part of any recipient and `subject` part of the subject, all ignoring case (e.g. `from=@example.com`). |
 | `GET` | `/messages/:id` | Full message: `from`, `to`, `cc`, `bcc` (sent mail), `subject`, `date`, `text`, `html`, attachment list, `read` |
 | `GET` | `/messages/:id/attachments/:index` | Download an attachment |
 | `POST` | `/messages/:id/read` | Mark read |
