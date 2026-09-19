@@ -77,7 +77,7 @@ Admin calls use `ADMIN_KEY`; agent calls use an inbox's `api_key`.
 | `GET` | `/messages/:id/attachments/:index` | Download an attachment |
 | `POST` | `/messages/:id/unread` | Put it back in the unread list |
 | `DELETE` / `POST` | `/messages/:id`, `/messages/:id/restore` | Delete, undo |
-| `GET` / `POST` / `DELETE` | `/webhooks[/:id]` | Manage webhooks |
+| `GET` / `POST` / `DELETE` | `/webhooks[/:id]` | Manage webhooks (`{url, name?}`) |
 | `POST` / `GET` | `/admin/inboxes` | Create, list inboxes |
 | `PATCH` / `DELETE` / `POST` | `/admin/inboxes/:id[/restore\|/purge\|/rotate-key]` | Rename, delete, restore, purge, rotate |
 | `GET` | `/health` | No key needed |

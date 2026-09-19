@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { randomToken, sha256, uuidv7 } from "./crypto";
 import type { Env } from "./env";
 import { purgeInboxFiles, purgeMessages } from "./mail";
+import { BAD_NAME, parseName } from "./validate";
 
 export const admin = new Hono<{ Bindings: Env }>();
 
@@ -15,18 +16,6 @@ async function hasCloudflareMx(domain: string): Promise<boolean> {
   const { Answer = [] } = await res.json<{ Answer?: { data: string }[] }>();
   return Answer.some((a) => a.data.toLowerCase().endsWith(".mx.cloudflare.net."));
 }
-
-// An inbox's optional display name. null or "" means no name. Line breaks and other control
-// characters are refused, so a name can't add headers to outgoing mail. undefined = invalid.
-function parseName(value: unknown): string | null | undefined {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "string") return undefined;
-  const name = value.trim();
-  if (name.length > 100 || /[\x00-\x1f\x7f]/.test(name)) return undefined;
-  return name || null;
-}
-
-const BAD_NAME = "`name` must be text, at most 100 characters, with no line breaks";
 
 admin.use("*", async (c, next) => {
   const token = c.req.header("Authorization")?.replace(/^Bearer /, "") ?? "";

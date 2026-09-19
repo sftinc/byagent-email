@@ -72,4 +72,4 @@ attachment metadata and the timestamps. The raw email is not kept.
 | Receiving | 25 MiB per message (Cloudflare's limit) |
 | Listing | 20 messages per page |
 | Webhooks | 10 per inbox |
-| Inbox name | 100 characters, no line breaks |
+| Inbox and webhook names | 100 characters, no line breaks |

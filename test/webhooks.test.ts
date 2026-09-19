@@ -13,19 +13,28 @@ describe("webhook endpoints", () => {
     const { api_key: key } = await createInbox("agent");
     expect((await api("/webhooks", { method: "POST", key, body: { url: "http://insecure.example" } })).status).toBe(400);
 
-    const a = (await (await api("/webhooks", { method: "POST", key, body: { url: "https://a.example/hook" } })).json()) as any;
+    const a = (await (await api("/webhooks", { method: "POST", key, body: { url: "https://a.example/hook", name: " Ops alerts " } })).json()) as any;
     const b = (await (await api("/webhooks", { method: "POST", key, body: { url: "https://b.example/hook" } })).json()) as any;
-    expect(a).toEqual({ id: expect.any(String), url: "https://a.example/hook", secret: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    expect(a).toEqual({
+      id: expect.any(String),
+      name: "Ops alerts",
+      url: "https://a.example/hook",
+      secret: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(b.name).toBeNull();
     expect(b.secret).not.toBe(a.secret);
+    expect((await api("/webhooks", { method: "POST", key, body: { url: "https://c.example/hook", name: "x".repeat(101) } })).status).toBe(400);
     const list = (await (await api("/webhooks", { key })).json()) as { webhooks: any[] };
     expect(list.webhooks).toHaveLength(2);
 
     expect((await api(`/webhooks/${a.id}`, { method: "DELETE", key })).status).toBe(200);
     expect((await api(`/webhooks/${a.id}`, { method: "DELETE", key })).status).toBe(404);
     const after = (await (await api("/webhooks", { key })).json()) as { webhooks: any[] };
-    expect(after.webhooks).toEqual([{ id: b.id, url: "https://b.example/hook" }]);
+    expect(after.webhooks).toEqual([{ id: b.id, name: null, url: "https://b.example/hook" }]);
     const deleted = (await (await api("/webhooks?deleted=true", { key })).json()) as { webhooks: any[] };
-    expect(deleted.webhooks).toEqual([{ id: a.id, url: "https://a.example/hook", deleted_at: expect.any(Number) }]);
+    expect(deleted.webhooks).toEqual([
+      { id: a.id, name: "Ops alerts", url: "https://a.example/hook", deleted_at: expect.any(Number) },
+    ]);
   });
 
   it("restores a deleted webhook, unless the inbox is already at 10", async () => {

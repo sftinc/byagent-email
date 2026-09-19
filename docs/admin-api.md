@@ -37,6 +37,9 @@ curl -X POST $URL/admin/inboxes -H "Authorization: Bearer $ADMIN_KEY" \
   MX records are checked first.
 - 409 if the address exists. If the existing inbox is deleted, the error says to restore it instead.
 
+To push arriving mail somewhere, register a webhook with the new key right after creating the inbox:
+`POST /webhooks` with `{"url":"https://…"}` — see [Webhooks](webhooks.md#register-one).
+
 ## List inboxes
 
 ```bash

@@ -18,6 +18,7 @@ CREATE TABLE webhooks (
   id         TEXT PRIMARY KEY,
   inbox_id   TEXT NOT NULL REFERENCES inboxes(id) ON DELETE CASCADE,
   -- target
+  name       TEXT,              -- optional label, so a list says what each webhook is for
   url        TEXT NOT NULL,
   -- auth
   secret     TEXT NOT NULL,     -- signs this webhook's deliveries

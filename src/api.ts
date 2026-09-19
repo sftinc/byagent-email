@@ -6,6 +6,7 @@ import { randomToken, sha256, uuidv7 } from "./crypto";
 import type { Env, Inbox } from "./env";
 import { type Attachment, loadAttachment, loadMessage, saveSent } from "./mail";
 import { buildEmail } from "./send";
+import { BAD_NAME, parseName } from "./validate";
 
 type App = { Bindings: Env; Variables: { inbox: Inbox } };
 
@@ -192,7 +193,7 @@ const TOO_MANY = "At most 10 webhooks per inbox";
 app.get("/webhooks", async (c) => {
   const deleted = c.req.query("deleted") === "true";
   const { results } = await c.env.DB.prepare(
-    `SELECT id, url${deleted ? ", deleted_at" : ""} FROM webhooks WHERE inbox_id = ? AND deleted_at IS ${deleted ? "NOT NULL" : "NULL"}`,
+    `SELECT id, name, url${deleted ? ", deleted_at" : ""} FROM webhooks WHERE inbox_id = ? AND deleted_at IS ${deleted ? "NOT NULL" : "NULL"}`,
   )
     .bind(c.get("inbox").id)
     .all();
@@ -200,16 +201,19 @@ app.get("/webhooks", async (c) => {
 });
 
 app.post("/webhooks", async (c) => {
-  const body = await c.req.json<{ url?: unknown }>().catch(() => ({}) as { url?: unknown });
+  type WebhookBody = { url?: unknown; name?: unknown };
+  const body = await c.req.json<WebhookBody>().catch(() => ({}) as WebhookBody);
   const url = typeof body.url === "string" && URL.canParse(body.url) ? new URL(body.url) : null;
   if (url?.protocol !== "https:") return c.json({ error: "`url` must be an https:// URL" }, 400);
+  const name = parseName(body.name);
+  if (name === undefined) return c.json({ error: BAD_NAME }, 400);
   if ((await webhookCount(c.env, c.get("inbox").id)) >= 10) return c.json({ error: TOO_MANY }, 400);
   const id = uuidv7();
   const secret = randomToken();
-  await c.env.DB.prepare("INSERT INTO webhooks (id, inbox_id, url, secret, created_at) VALUES (?, ?, ?, ?, ?)")
-    .bind(id, c.get("inbox").id, url.href, secret, Date.now())
+  await c.env.DB.prepare("INSERT INTO webhooks (id, inbox_id, name, url, secret, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(id, c.get("inbox").id, name, url.href, secret, Date.now())
     .run();
-  return c.json({ id, url: url.href, secret }, 201);
+  return c.json({ id, name, url: url.href, secret }, 201);
 });
 
 app.delete("/webhooks/:id", async (c) => {

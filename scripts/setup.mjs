@@ -33,12 +33,14 @@ const { uuid } = JSON.parse(run(`npx wrangler d1 info ${NAME} --json`));
 if (existsSync("wrangler.jsonc")) {
   console.log("wrangler.jsonc already exists, leaving it as is (edit it to change the API hostname).");
 } else {
+  // Either a custom domain or the generated workers.dev URL, never neither: without an explicit
+  // setting the Worker can deploy with no public URL at all.
+  const serving = apiHost
+    ? `"routes": [{ "pattern": "${apiHost}", "custom_domain": true }],\n  "workers_dev": false,\n  "preview_urls": false,`
+    : '"workers_dev": true,';
   const config = readFileSync("wrangler.example.jsonc", "utf8")
     .replace("REPLACE_WITH_D1_DATABASE_ID", uuid)
-    .replace(
-      '"vars": {',
-      apiHost ? `"routes": [{ "pattern": "${apiHost}", "custom_domain": true }],\n  "workers_dev": false,\n  "preview_urls": false,\n  "vars": {` : '"vars": {',
-    );
+    .replace('"vars": {', `${serving}\n  "vars": {`);
   writeFileSync("wrangler.jsonc", config);
   console.log("Wrote wrangler.jsonc");
 }

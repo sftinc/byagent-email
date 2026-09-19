@@ -7,16 +7,18 @@ delivery fails.
 ## Register one
 
 ```bash
-curl -X POST $URL/webhooks -H "Authorization: Bearer $API_KEY" -d '{"url":"https://agent.example/hook"}'
-# → {"id":"01a0…","url":"https://agent.example/hook","secret":"…"}
+curl -X POST $URL/webhooks -H "Authorization: Bearer $API_KEY" \
+  -d '{"url":"https://agent.example/hook","name":"Ops alerts"}'
+# → {"id":"01a0…","name":"Ops alerts","url":"https://agent.example/hook","secret":"…"}
 ```
 
 - The URL must be `https://`.
+- `name` is optional, up to 100 characters: a label so a list says what each webhook is for.
 - **The `secret` is shown only once.** It signs every delivery for this webhook.
 - Up to 10 webhooks per inbox. To rotate a secret, delete the webhook and add it again.
 
 ```bash
-curl $URL/webhooks -H "Authorization: Bearer $API_KEY"            # list (no secrets)
+curl $URL/webhooks -H "Authorization: Bearer $API_KEY"   # list: id, name, url (no secrets)
 curl -X DELETE $URL/webhooks/01a0… -H "Authorization: Bearer $API_KEY"
 curl -X POST $URL/webhooks/01a0…/restore -H "Authorization: Bearer $API_KEY"
 ```
