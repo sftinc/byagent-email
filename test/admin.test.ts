@@ -100,16 +100,20 @@ describe("admin", () => {
     await expect(insert.run()).rejects.toThrow(/FOREIGN KEY/);
   });
 
-  it("soft-deletes an inbox with its webhooks and messages, keeping stored mail", async () => {
+  it("soft-deletes an inbox, keeping its webhooks, messages and stored mail", async () => {
     const inbox = await createInbox("agent");
     await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://example.com/hook" } });
     await receive(eml(), inbox.address, { WEBHOOKS: { sendBatch: async () => {} } as any });
 
     const res = await api(`/admin/inboxes/${inbox.id}`, { method: "DELETE", key: ADMIN_KEY });
     expect(res.status).toBe(200);
-    for (const table of ["inboxes", "webhooks", "messages"]) {
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n, COUNT(deleted_at) AS deleted FROM inboxes").first()).toEqual({
+      n: 1,
+      deleted: 1,
+    });
+    for (const table of ["webhooks", "messages"]) {
       const row = await env.DB.prepare(`SELECT COUNT(*) AS n, COUNT(deleted_at) AS deleted FROM ${table}`).first();
-      expect(row).toEqual({ n: 1, deleted: 1 });
+      expect(row).toEqual({ n: 1, deleted: 0 }); // untouched: the inbox alone is deleted
     }
     expect((await env.MAIL.list()).objects).toHaveLength(1);
 
@@ -126,17 +130,39 @@ describe("admin", () => {
     expect((await api(`/admin/inboxes/${inbox.id}`, { method: "DELETE", key: ADMIN_KEY })).status).toBe(404);
   });
 
-  it("reuses a deleted address as a new, empty inbox", async () => {
+  it("restores an inbox with its mail as it was", async () => {
+    const inbox = await createInbox("agent");
+    await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://example.com/hook" } });
+    await receive(eml({ subject: "Kept" }), inbox.address);
+    await receive(eml({ subject: "Dropped earlier" }), inbox.address);
+    const { messages } = (await (await api("/messages", { key: inbox.api_key })).json()) as { messages: any[] };
+    const dropped = messages.find((m) => m.subject === "Dropped earlier")!.id;
+    await api(`/messages/${dropped}`, { method: "DELETE", key: inbox.api_key });
+
+    await api(`/admin/inboxes/${inbox.id}`, { method: "DELETE", key: ADMIN_KEY });
+    expect((await api(`/admin/inboxes/${inbox.id}/restore`, { method: "POST", key: ADMIN_KEY })).status).toBe(200);
+
+    expect((await api("/messages", { key: inbox.api_key })).status).toBe(200);
+    const live = (await (await api("/messages", { key: inbox.api_key })).json()) as { messages: any[] };
+    expect(live.messages.map((m) => m.subject)).toEqual(["Kept"]); // the earlier delete stands
+    const hooks = (await (await api("/webhooks", { key: inbox.api_key })).json()) as { webhooks: unknown[] };
+    expect(hooks.webhooks).toHaveLength(1);
+    expect((await api(`/admin/inboxes/${inbox.id}/restore`, { method: "POST", key: ADMIN_KEY })).status).toBe(404);
+  });
+
+  it("refuses to recreate a deleted address, pointing at restore", async () => {
     const old = await createInbox("agent");
     await receive(eml(), old.address);
     await api(`/admin/inboxes/${old.id}`, { method: "DELETE", key: ADMIN_KEY });
 
     const res = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { address: old.address } });
-    expect(res.status).toBe(201);
-    const { api_key } = (await res.json()) as { api_key: string };
-    const list = (await (await api("/messages", { key: api_key })).json()) as { messages: unknown[] };
-    expect(list.messages).toEqual([]);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Inbox already exists, deleted: restore it instead" });
+
+    expect((await api(`/admin/inboxes/${old.id}/restore`, { method: "POST", key: ADMIN_KEY })).status).toBe(200);
+    const list = (await (await api("/messages", { key: old.api_key })).json()) as { messages: unknown[] };
+    expect(list.messages).toHaveLength(1); // the old key and mail still work
     const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM inboxes WHERE address = ?").bind(old.address).first();
-    expect(row).toEqual({ n: 2 });
+    expect(row).toEqual({ n: 1 });
   });
 });

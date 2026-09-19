@@ -155,6 +155,26 @@ app.delete("/messages/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+app.post("/messages/:id/restore", async (c) => {
+  const { meta } = await c.env.DB.prepare(
+    "UPDATE messages SET deleted_at = NULL WHERE id = ? AND inbox_id = ? AND deleted_at IS NOT NULL",
+  )
+    .bind(c.req.param("id"), c.get("inbox").id)
+    .run();
+  if (meta.changes === 0) return c.json({ error: "Message not found" }, 404);
+  return c.json({ ok: true });
+});
+
+// How many webhooks the inbox has, against the cap of 10.
+async function webhookCount(env: Env, inboxId: string): Promise<number> {
+  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM webhooks WHERE inbox_id = ? AND deleted_at IS NULL")
+    .bind(inboxId)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+const TOO_MANY = "At most 10 webhooks per inbox";
+
 app.get("/webhooks", async (c) => {
   const deleted = c.req.query("deleted") === "true";
   const { results } = await c.env.DB.prepare(
@@ -169,10 +189,7 @@ app.post("/webhooks", async (c) => {
   const body = await c.req.json<{ url?: unknown }>().catch(() => ({}) as { url?: unknown });
   const url = typeof body.url === "string" && URL.canParse(body.url) ? new URL(body.url) : null;
   if (url?.protocol !== "https:") return c.json({ error: "`url` must be an https:// URL" }, 400);
-  const count = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM webhooks WHERE inbox_id = ? AND deleted_at IS NULL")
-    .bind(c.get("inbox").id)
-    .first<{ n: number }>();
-  if ((count?.n ?? 0) >= 10) return c.json({ error: "At most 10 webhooks per inbox" }, 400);
+  if ((await webhookCount(c.env, c.get("inbox").id)) >= 10) return c.json({ error: TOO_MANY }, 400);
   const id = uuidv7();
   const secret = randomToken();
   await c.env.DB.prepare("INSERT INTO webhooks (id, inbox_id, url, secret, created_at) VALUES (?, ?, ?, ?, ?)")
@@ -188,6 +205,17 @@ app.delete("/webhooks/:id", async (c) => {
     .bind(Date.now(), c.req.param("id"), c.get("inbox").id)
     .run();
   if (meta.changes === 0) return c.json({ error: "Webhook not found" }, 404);
+  return c.json({ ok: true });
+});
+
+app.post("/webhooks/:id/restore", async (c) => {
+  const id = c.req.param("id");
+  const found = await c.env.DB.prepare("SELECT 1 FROM webhooks WHERE id = ? AND inbox_id = ? AND deleted_at IS NOT NULL")
+    .bind(id, c.get("inbox").id)
+    .first();
+  if (!found) return c.json({ error: "Webhook not found" }, 404);
+  if ((await webhookCount(c.env, c.get("inbox").id)) >= 10) return c.json({ error: TOO_MANY }, 400);
+  await c.env.DB.prepare("UPDATE webhooks SET deleted_at = NULL WHERE id = ?").bind(id).run();
   return c.json({ ok: true });
 });
 

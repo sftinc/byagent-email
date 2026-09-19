@@ -44,10 +44,13 @@ admin.post("/inboxes", async (c) => {
   if (!/^[a-z0-9._-]{1,64}@[a-z0-9.-]+\.[a-z]{2,}$/.test(address)) {
     return c.json({ error: "`address` must look like name@example.com (name: 1-64 of a-z 0-9 . _ -)" }, 400);
   }
-  const exists = await c.env.DB.prepare("SELECT 1 FROM inboxes WHERE address = ? AND deleted_at IS NULL")
+  const exists = await c.env.DB.prepare("SELECT deleted_at FROM inboxes WHERE address = ?")
     .bind(address)
-    .first();
-  if (exists) return c.json({ error: "Inbox already exists" }, 409);
+    .first<{ deleted_at: number | null }>();
+  if (exists) {
+    const error = exists.deleted_at ? "Inbox already exists, deleted: restore it instead" : "Inbox already exists";
+    return c.json({ error }, 409);
+  }
   const domain = address.split("@")[1];
   if (!(await hasCloudflareMx(domain))) {
     return c.json({ error: `${domain} has no Cloudflare Email Routing MX records` }, 400);
@@ -90,16 +93,21 @@ admin.delete("/inboxes/:id", async (c) => {
     .first<{ id: string }>();
   if (!inbox) return c.json({ error: "Inbox not found" }, 404);
 
-  // Soft delete: the inbox, its webhooks and its messages are hidden, and stored mail is kept.
-  const now = Date.now();
-  await c.env.DB.batch(
-    ["webhooks", "messages"]
-      .map((table) =>
-        c.env.DB.prepare(`UPDATE ${table} SET deleted_at = ? WHERE inbox_id = ? AND deleted_at IS NULL`).bind(now, inbox.id),
-      )
-      .concat(c.env.DB.prepare("UPDATE inboxes SET deleted_at = ? WHERE id = ?").bind(now, inbox.id)),
-  );
+  // Soft delete: only the inbox row is marked. Its webhooks and messages are unreachable while
+  // it is deleted, and come back as they were if it is restored.
+  await c.env.DB.prepare("UPDATE inboxes SET deleted_at = ? WHERE id = ?").bind(Date.now(), inbox.id).run();
   return c.json({ ok: true });
+});
+
+admin.post("/inboxes/:id/restore", async (c) => {
+  const inbox = await c.env.DB.prepare("SELECT id, address, name FROM inboxes WHERE id = ? AND deleted_at IS NOT NULL")
+    .bind(c.req.param("id"))
+    .first<{ id: string; address: string; name: string | null }>();
+  if (!inbox) return c.json({ error: "Inbox not found" }, 404);
+  await c.env.DB.prepare("UPDATE inboxes SET deleted_at = NULL, updated_at = ? WHERE id = ?")
+    .bind(Date.now(), inbox.id)
+    .run();
+  return c.json({ id: inbox.id, address: inbox.address, name: inbox.name });
 });
 
 admin.post("/inboxes/:id/rotate-key", async (c) => {

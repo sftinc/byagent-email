@@ -137,6 +137,20 @@ describe("messages", () => {
     });
   });
 
+  it("restores a deleted message", async () => {
+    const { key, id } = await setup();
+    await api(`/messages/${id}`, { method: "DELETE", key });
+    expect((await api(`/messages/${id}/restore`, { method: "POST", key })).status).toBe(200);
+
+    const list = (await (await api("/messages", { key })).json()) as { messages: any[] };
+    expect(list.messages.map((m) => [m.id, m.deleted_at])).toEqual([[id, null]]);
+    expect((await api(`/messages/${id}/read`, { method: "POST", key })).status).toBe(200);
+    // Restoring again, or restoring someone else's message, is a 404.
+    expect((await api(`/messages/${id}/restore`, { method: "POST", key })).status).toBe(404);
+    const other = await createInbox("other");
+    expect((await api(`/messages/${id}/restore`, { method: "POST", key: other.api_key })).status).toBe(404);
+  });
+
   it("downloads an attachment", async () => {
     const { key, id } = await setup();
     const res = await api(`/messages/${id}/attachments/0`, { key });

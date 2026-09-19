@@ -28,6 +28,23 @@ describe("webhook endpoints", () => {
     expect(deleted.webhooks).toEqual([{ id: a.id, url: "https://a.example/hook", deleted_at: expect.any(Number) }]);
   });
 
+  it("restores a deleted webhook, unless the inbox is already at 10", async () => {
+    const { api_key: key } = await createInbox("agent");
+    const hook = (await (await api("/webhooks", { method: "POST", key, body: { url: "https://a.example/hook" } })).json()) as { id: string };
+    await api(`/webhooks/${hook.id}`, { method: "DELETE", key });
+
+    expect((await api(`/webhooks/${hook.id}/restore`, { method: "POST", key })).status).toBe(200);
+    const list = (await (await api("/webhooks", { key })).json()) as { webhooks: { id: string }[] };
+    expect(list.webhooks.map((w) => w.id)).toEqual([hook.id]);
+    expect((await api(`/webhooks/${hook.id}/restore`, { method: "POST", key })).status).toBe(404);
+
+    await api(`/webhooks/${hook.id}`, { method: "DELETE", key });
+    for (let i = 0; i < 10; i++) await api("/webhooks", { method: "POST", key, body: { url: `https://b${i}.example/hook` } });
+    const full = await api(`/webhooks/${hook.id}/restore`, { method: "POST", key });
+    expect(full.status).toBe(400);
+    expect(await full.json()).toEqual({ error: "At most 10 webhooks per inbox" });
+  });
+
   it("caps webhooks at 10 per inbox", async () => {
     const { api_key: key } = await createInbox("agent");
     for (let i = 0; i < 10; i++) {

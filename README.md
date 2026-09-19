@@ -63,7 +63,11 @@ Enabling Email Routing replaces the domain's MX records, so use a domain (or sub
 
 To add or change the API hostname later, set `routes` in `wrangler.jsonc` to `[{ "pattern": "api.example.com", "custom_domain": true }]` and redeploy.
 
-Deletes are soft everywhere: a deleted inbox, webhook or message disappears from the lists, but its database row and stored mail are kept. Pass `deleted=true` to a list to see deleted items instead, each with its `deleted_at`.
+Deletes are soft everywhere: a deleted inbox, webhook or message disappears from the lists, but its
+database row and stored mail are kept. Pass `deleted=true` to a list to see deleted items instead,
+each with its `deleted_at`, and restore any of them with its `restore` route. Deleting an inbox marks
+only the inbox: its mail and webhooks come back untouched when it is restored, so an address is never
+reused for a second inbox.
 
 ## Admin API
 
@@ -82,7 +86,8 @@ Inboxes can be on any domain you've set up for this Worker (see Setup). Creating
 | `POST` | `/admin/inboxes` | `{address, name?}` → `{id, address, name, api_key}` |
 | `GET` | `/admin/inboxes?deleted=true` | List inboxes: `id`, `address`, `name`, `created_at` |
 | `PATCH` | `/admin/inboxes/:id` | `{name}` sets the display name (`null` or `""` removes it) → `{id, address, name}` |
-| `DELETE` | `/admin/inboxes/:id` | Delete the inbox, its webhooks and its mail. The address can then be used for a new inbox. |
+| `DELETE` | `/admin/inboxes/:id` | Delete the inbox. Its key stops working and its mail is hidden. |
+| `POST` | `/admin/inboxes/:id/restore` | Bring a deleted inbox back, with its mail and webhooks |
 | `POST` | `/admin/inboxes/:id/rotate-key` | Returns a new `api_key` |
 
 Admin routes take the inbox `id`, from creation or `GET /admin/inboxes`. An inbox's `name` is optional; when set, its mail is sent as `Name <address>`. It can be up to 100 characters, with no line breaks.
@@ -99,7 +104,9 @@ All agent calls use `Authorization: Bearer <api_key>`.
 | `GET` | `/messages/:id/attachments/:index` | Download an attachment |
 | `POST` | `/messages/:id/read` | Mark read |
 | `DELETE` | `/messages/:id` | Delete |
+| `POST` | `/messages/:id/restore` | Undo a delete |
 | `GET` / `POST` / `DELETE` | `/webhooks[/:id]?deleted=true` | List, add (`{url}`, https only → `{id, url, secret}`), remove |
+| `POST` | `/webhooks/:id/restore` | Undo a delete, unless the inbox already has 10 |
 
 Send limits come from Cloudflare: 5 MiB per message, 32 attachments, 50 recipients.
 

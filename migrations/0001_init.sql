@@ -43,8 +43,8 @@ CREATE TABLE messages (
   deleted_at INTEGER
 );
 
--- An address is unique among inboxes that aren't deleted, so a deleted address can be reused.
-CREATE UNIQUE INDEX inboxes_address ON inboxes(address) WHERE deleted_at IS NULL;
+-- One inbox per address, deleted or not: a deleted inbox is restored, never recreated.
+CREATE UNIQUE INDEX inboxes_address ON inboxes(address);
 CREATE UNIQUE INDEX inboxes_key_hash ON inboxes(key_hash);
 CREATE INDEX messages_inbox_id ON messages(inbox_id, id);  -- lists and pages by id
 CREATE INDEX webhooks_inbox ON webhooks(inbox_id);
