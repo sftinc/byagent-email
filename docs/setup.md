@@ -19,8 +19,8 @@ The setup command:
 - writes `wrangler.jsonc` (gitignored). The hostname is optional: it serves the API on that hostname
   as a custom domain. Leave it out to use the Worker's `workers.dev` URL,
 - applies the database schema and deploys the Worker,
-- generates an `ADMIN_KEY` and saves it to `.dev.vars` (gitignored), which `wrangler dev` also uses.
-  Load it with `source .dev.vars`.
+- generates an `ADMIN_KEY` and saves it to `.dev.vars` (gitignored), along with `API_URL`, the address
+  the Worker is served on. `wrangler dev` uses this file too. Load it with `source .dev.vars`.
 
 Setup is safe to re-run. It keeps existing resources, data and the `ADMIN_KEY` in `.dev.vars`. To
 rotate the admin key, delete that line and re-run. After pulling updates, re-run it to apply any new
@@ -51,8 +51,13 @@ Worker, so check that step in the dashboard.
 | `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `0` | Mail older than this many days is [purged](concepts.md#purging) daily at 03:00 UTC, permanently, with its files. Messages only. `0` keeps mail forever. |
 | `ADMIN_KEY` | Worker secret, plus `.dev.vars` locally | set by setup | Admin API key |
 
+Without a hostname the Worker is served on a `workers.dev` URL, which Cloudflare generates from the
+Worker name and your account's subdomain. Either way the URL is printed by the deploy and saved as
+`API_URL` in `.dev.vars`.
+
 To add or change the API hostname later, set `routes` in `wrangler.jsonc` to
-`[{ "pattern": "api.example.com", "custom_domain": true }]` and redeploy.
+`[{ "pattern": "api.example.com", "custom_domain": true }]` and redeploy. Setup rewrites `API_URL`
+on every run.
 
 `GET /health` needs no key: it returns `{"ok":true}`, or a 503 if the database is unreachable.
 

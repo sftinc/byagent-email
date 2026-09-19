@@ -6,7 +6,7 @@ this file to the agent.
 Every call uses the inbox's API key, which identifies the inbox:
 
 ```bash
-export URL=https://api.example.com        # the API hostname
+export URL=https://api.example.com        # whoever deployed it has this: API_URL in .dev.vars
 export API_KEY=…                          # from inbox creation, shown once
 curl -H "Authorization: Bearer $API_KEY" "$URL/messages?unread=true"
 ```

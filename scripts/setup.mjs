@@ -44,16 +44,27 @@ if (existsSync("wrangler.jsonc")) {
 }
 
 runVisible(`npx wrangler d1 migrations apply ${NAME} --remote`);
-runVisible("npx wrangler deploy");
 
+// The deploy prints where the Worker is served: a workers.dev URL, or the custom domain.
+const deployed = run("npx wrangler deploy");
+console.log(deployed);
+const apiUrl =
+  deployed.match(/https:\/\/[^\s]+\.workers\.dev/)?.[0] ??
+  (deployed.match(/^\s+(\S+) \(custom domain\)/m)?.[1] && `https://${deployed.match(/^\s+(\S+) \(custom domain\)/m)[1]}`);
+
+// .dev.vars (gitignored) holds the admin key and the API URL, so tools and agents can find them.
 const lines = existsSync(".dev.vars") ? readFileSync(".dev.vars", "utf8").split("\n").filter(Boolean) : [];
-const existing = lines.find((l) => l.startsWith("ADMIN_KEY="))?.slice("ADMIN_KEY=".length);
+const vars = new Map(lines.map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]));
+const existing = vars.get("ADMIN_KEY");
 const adminKey = existing || randomBytes(32).toString("hex");
 run("npx wrangler secret put ADMIN_KEY", { input: adminKey });
-if (!existing) writeFileSync(".dev.vars", [...lines, `ADMIN_KEY=${adminKey}`, ""].join("\n"));
+vars.set("ADMIN_KEY", adminKey);
+if (apiUrl) vars.set("API_URL", apiUrl);
+writeFileSync(".dev.vars", `${[...vars].map(([k, v]) => `${k}=${v}`).join("\n")}\n`);
 
 console.log(`
-Done. ADMIN_KEY ${existing ? "kept from" : "saved to"} .dev.vars (gitignored). Use it with: source .dev.vars
+Done. ADMIN_KEY ${existing ? "kept in" : "saved to"} .dev.vars (gitignored). Use it with: source .dev.vars
+${apiUrl ? `The API is at ${apiUrl} (saved to .dev.vars as API_URL).` : "Could not read the API URL from the deploy output."}
 
 For each email domain, in the Cloudflare dashboard:
   1. Email > Email Sending > Onboard Domain

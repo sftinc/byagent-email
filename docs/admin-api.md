@@ -3,8 +3,8 @@
 Managing inboxes. Every call uses the admin key:
 
 ```bash
-export URL=https://api.example.com
-source .dev.vars            # ADMIN_KEY
+source .dev.vars            # ADMIN_KEY and API_URL, written by setup
+export URL=$API_URL
 ```
 
 ```bash

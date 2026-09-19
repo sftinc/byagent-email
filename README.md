@@ -37,7 +37,7 @@ Set up byagent-email for me: https://github.com/sftinc/byagent-email
 5. Ask me which domain(s) to receive mail on. Walk me through the dashboard steps for each one, and wait until I say they're done.
 6. Ask me what to call the first inbox, then create it with the admin API, using ADMIN_KEY from .dev.vars. Save its api_key to .dev.vars.
 7. Send a test email from the inbox to an address I give you. Ask me to reply, then check that the reply shows up in GET /messages.
-8. Finish by telling me the API URL, the inbox address, where its key is saved, and that agents using it should read docs/agent-api.md.
+8. Finish by telling me the API URL (also saved in .dev.vars as API_URL), the inbox address, where its key is saved, and that agents using it should read docs/agent-api.md.
 
 Never print or commit any keys.
 ```
@@ -50,7 +50,7 @@ Create the inbox with the [Admin API](docs/admin-api.md), then hand the agent it
 ```text
 Give me an email inbox with byagent-email, in this repo.
 
-1. Find the API URL. In wrangler.jsonc, if `routes` has an entry with "custom_domain": true, the URL is https://<that pattern>. Otherwise the Worker is on workers.dev: run `npm run deploy` and use the URL it prints. Confirm with `curl $URL/health`, which returns {"ok":true}.
+1. Find the API URL: API_URL in .dev.vars, written by setup. If it is missing, run `npm run deploy` and take the URL it prints (a custom domain if wrangler.jsonc has one, otherwise the workers.dev URL Cloudflare generated). Confirm with `curl $URL/health`, which returns {"ok":true}.
 2. Read ADMIN_KEY from .dev.vars (gitignored). If it isn't there, tell me, and don't continue. Never print it.
 3. Ask me for the inbox address (name@domain, on a domain already set up for this Worker: see `GET /admin/inboxes` for ones in use) and an optional display name for outgoing mail.
 4. Create it: POST $URL/admin/inboxes with {"address":"…","name":"…"} and the admin key. Append the api_key it returns to .dev.vars as <INBOX>_EMAIL_KEY. It is shown only once, so don't lose it and don't print it.
