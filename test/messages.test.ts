@@ -25,7 +25,7 @@ describe("messages", () => {
         id,
         direction: "in",
         from: "sender@example.org",
-        to: ["agent@email.example.com"],
+        recipients: ["agent@email.example.com"],
         subject: "First",
         received_at: expect.any(Number),
         read: false,

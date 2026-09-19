@@ -25,7 +25,7 @@ Set up byagent-email for me: https://github.com/sftinc/byagent-email
 3. Check that I'm logged in with `npx wrangler whoami`. If not, ask me to run `npx wrangler login`.
 4. Run `npm install`, then `npm run setup` (add the hostname if I gave one: `npm run setup api.example.com`).
 5. Ask me which domain(s) to receive mail on. Walk me through the README's dashboard steps for each one, and wait until I say they're done.
-6. Create a test inbox with the admin API, using ADMIN_KEY from .dev.vars. Save its api_key and webhook_secret to .dev.vars.
+6. Create a test inbox with the admin API, using ADMIN_KEY from .dev.vars. Save its api_key to .dev.vars.
 7. Send a test email from the inbox to an address I give you. Ask me to reply, then check that the reply shows up in GET /messages.
 
 Never print or commit any keys.
@@ -68,18 +68,16 @@ To add or change the API hostname later, set `routes` in `wrangler.jsonc` to `[{
 All admin calls use `Authorization: Bearer <ADMIN_KEY>`.
 
 ```bash
-# Create an inbox. The api_key and webhook_secret are shown only once.
+# Create an inbox. The api_key is shown only once.
 curl -X POST $URL/admin/inboxes -H "Authorization: Bearer $ADMIN_KEY" -d '{"address":"claude@example.com"}'
-# → {"address":"claude@example.com","api_key":"…","webhook_secret":"…"}
+# → {"address":"claude@example.com","api_key":"…"}
 ```
-
-Keep the `webhook_secret` from inbox creation. It isn't shown again.
 
 Inboxes can be on any domain you've set up for this Worker (see Setup). Creating an inbox checks that the domain's MX records point at Cloudflare Email Routing, which catches typos and domains that aren't set up yet. It can't confirm that the catch-all rule targets this Worker, so check that step in the dashboard.
 
 | Method | Path | |
 |---|---|---|
-| `POST` | `/admin/inboxes` | `{address}` → `{address, api_key, webhook_secret}` |
+| `POST` | `/admin/inboxes` | `{address}` → `{address, api_key}` |
 | `GET` | `/admin/inboxes` | List inboxes |
 | `DELETE` | `/admin/inboxes/:address` | Delete the inbox and all its mail |
 | `POST` | `/admin/inboxes/:address/rotate-key` | Returns a new `api_key` |
@@ -91,12 +89,12 @@ All agent calls use `Authorization: Bearer <api_key>`.
 | Method | Path | |
 |---|---|---|
 | `POST` | `/send` | `{to, cc?, bcc?, subject, text?, html?, attachments?: [{filename, type, content (base64)}]}` → `{id, messageId}`. The sent message is saved, and `id` works with the `/messages/:id` routes. |
-| `GET` | `/messages?direction=in&unread=true&from=<text>&to=<text>&since=<unix ms>` | List messages (newest first; with `since`, oldest first so you can page forward). Max 100. `direction` is `in` (received, the default), `out` (sent) or `all`. `from` and `to` match part of an address, ignoring case (e.g. `@example.com`); `to` covers every recipient. |
+| `GET` | `/messages?direction=in&unread=true&from=<text>&to=<text>&since=<unix ms>` | List messages (newest first; with `since`, oldest first so you can page forward). Max 100. `direction` is `in` (received, the default), `out` (sent) or `all`. Each message lists its `recipients` (to, cc and, for sent mail, bcc). `from` matches part of the sender address and `to` part of any recipient, ignoring case (e.g. `@example.com`). |
 | `GET` | `/messages/:id` | Full message: text, html, attachment list |
 | `GET` | `/messages/:id/attachments/:index` | Download an attachment |
 | `POST` | `/messages/:id/read` | Mark read |
 | `DELETE` | `/messages/:id` | Delete |
-| `GET` / `POST` / `DELETE` | `/webhooks[/:id]` | List, add (`{url}`, https only), remove |
+| `GET` / `POST` / `DELETE` | `/webhooks[/:id]` | List, add (`{url}`, https only → `{id, url, secret}`), remove |
 
 Send limits come from Cloudflare: 5 MiB per message, 32 attachments, 50 recipients.
 
@@ -112,7 +110,8 @@ When mail arrives, each of the inbox's webhooks gets a `POST`:
                "attachments": [{ "index": 0, "filename": "a.pdf", "type": "application/pdf", "size": 1234 }] } }
 ```
 
-To verify a webhook, compute `HMAC-SHA256(webhook_secret, X-Timestamp + "." + rawBody)` as
+Each webhook has its own `secret`, returned only once, when the webhook is added. To rotate it,
+delete the webhook and add it again. To verify a webhook, compute `HMAC-SHA256(secret, X-Timestamp + "." + rawBody)` as
 hex and compare it with the `X-Signature` header (`sha256=<hex>`). Reject old timestamps.
 A non-2xx response is retried with backoff, up to 5 attempts in total. You can always fall back to polling.
 

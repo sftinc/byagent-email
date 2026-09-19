@@ -9,7 +9,6 @@ export interface Env {
 
 export interface WebhookJob {
   webhookId: string;
-  inbox: string;
   messageId: string;
 }
 

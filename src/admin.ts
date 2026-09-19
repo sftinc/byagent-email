@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { randomToken, sha256 } from "./crypto";
+import { randomToken, sha256, uuidv7 } from "./crypto";
 import type { Env } from "./env";
 import { purgeMessages } from "./mail";
 
@@ -39,13 +39,10 @@ admin.post("/inboxes", async (c) => {
   }
 
   const apiKey = randomToken();
-  const webhookSecret = randomToken();
-  await c.env.DB.prepare(
-    "INSERT INTO inboxes (address, key_hash, webhook_secret, created_at) VALUES (?, ?, ?, ?)",
-  )
-    .bind(address, await sha256(apiKey), webhookSecret, Date.now())
+  await c.env.DB.prepare("INSERT INTO inboxes (id, address, key_hash, created_at) VALUES (?, ?, ?, ?)")
+    .bind(uuidv7(), address, await sha256(apiKey), Date.now())
     .run();
-  return c.json({ address, api_key: apiKey, webhook_secret: webhookSecret }, 201);
+  return c.json({ address, api_key: apiKey }, 201);
 });
 
 admin.get("/inboxes", async (c) => {
@@ -57,14 +54,14 @@ admin.get("/inboxes", async (c) => {
 
 admin.delete("/inboxes/:address", async (c) => {
   const address = c.req.param("address").toLowerCase();
-  const exists = await c.env.DB.prepare("SELECT 1 FROM inboxes WHERE address = ?").bind(address).first();
-  if (!exists) return c.json({ error: "Inbox not found" }, 404);
+  const inbox = await c.env.DB.prepare("SELECT id FROM inboxes WHERE address = ?").bind(address).first<{ id: string }>();
+  if (!inbox) return c.json({ error: "Inbox not found" }, 404);
 
   await c.env.DB.batch([
-    c.env.DB.prepare("DELETE FROM webhooks WHERE inbox = ?").bind(address),
-    c.env.DB.prepare("DELETE FROM inboxes WHERE address = ?").bind(address),
+    c.env.DB.prepare("DELETE FROM webhooks WHERE inbox_id = ?").bind(inbox.id),
+    c.env.DB.prepare("DELETE FROM inboxes WHERE id = ?").bind(inbox.id),
   ]);
-  await purgeMessages(c.env, "inbox = ?", address);
+  await purgeMessages(c.env, "inbox_id = ?", inbox.id);
   return c.json({ ok: true });
 });
 

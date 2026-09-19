@@ -8,10 +8,10 @@ beforeEach(reset);
 const DAY = 86_400_000;
 
 async function addMessage(id: string, receivedAt: number) {
-  await env.DB.prepare("INSERT INTO messages (id, inbox, from_addr, subject, received_at) VALUES (?, 'a@email.example.com', 's@x.com', 'x', ?)")
+  await env.DB.prepare("INSERT INTO messages (id, inbox_id, from_addr, subject, received_at) VALUES (?, 'i1', 's@x.com', 'x', ?)")
     .bind(id, receivedAt)
     .run();
-  await env.MAIL.put(`a@email.example.com/${id}.eml`, "raw");
+  await env.MAIL.put(`i1/${id}.eml`, "raw");
 }
 
 describe("cleanup", () => {
@@ -23,7 +23,7 @@ describe("cleanup", () => {
     const { results } = await env.DB.prepare("SELECT id FROM messages").all<{ id: string }>();
     expect(results.map((r) => r.id)).toEqual(["new"]);
     const keys = (await env.MAIL.list()).objects.map((o) => o.key);
-    expect(keys).toEqual(["a@email.example.com/new.eml"]);
+    expect(keys).toEqual(["i1/new.eml"]);
   });
 
   it("does nothing when RETENTION_DAYS is not a positive number", async () => {

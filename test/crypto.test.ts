@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hmacSha256, randomToken, sha256 } from "../src/crypto";
+import { hmacSha256, randomToken, sha256, uuidv7 } from "../src/crypto";
 
 describe("crypto", () => {
   it("hashes with SHA-256", async () => {
@@ -16,5 +16,17 @@ describe("crypto", () => {
     const a = randomToken();
     expect(a).toMatch(/^[0-9a-f]{64}$/);
     expect(randomToken()).not.toBe(a);
+  });
+
+  it("makes UUID v7s that start with the current time", () => {
+    const before = Date.now();
+    const ids = Array.from({ length: 3 }, () => uuidv7());
+    for (const id of ids) {
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+      const ms = parseInt(id.replace(/-/g, "").slice(0, 12), 16);
+      expect(ms).toBeGreaterThanOrEqual(before);
+      expect(ms).toBeLessThanOrEqual(Date.now());
+    }
+    expect(new Set(ids).size).toBe(3);
   });
 });

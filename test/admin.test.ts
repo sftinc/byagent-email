@@ -13,10 +13,9 @@ describe("admin", () => {
   it("creates an inbox and returns its key once", async () => {
     const res = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { address: "Claude@Email.Example.com" } });
     expect(res.status).toBe(201);
-    const body = (await res.json()) as { address: string; api_key: string; webhook_secret: string };
-    expect(body.address).toBe("claude@email.example.com");
-    expect(body.api_key).toMatch(/^[0-9a-f]{64}$/);
-    expect(body.webhook_secret).toMatch(/^[0-9a-f]{64}$/);
+    expect(await res.json()).toEqual({ address: "claude@email.example.com", api_key: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    const row = await env.DB.prepare("SELECT id FROM inboxes").first<{ id: string }>();
+    expect(row!.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7/);
 
     const list = await api("/admin/inboxes", { key: ADMIN_KEY });
     const { inboxes } = (await list.json()) as { inboxes: { address: string }[] };
@@ -55,9 +54,7 @@ describe("admin", () => {
 
   it("deletes an inbox with its webhooks, messages and stored mail", async () => {
     const inbox = await createInbox("agent");
-    await env.DB.prepare("INSERT INTO webhooks (id, inbox, url) VALUES ('w1', ?, 'https://example.com/hook')")
-      .bind(inbox.address)
-      .run();
+    await env.DB.prepare("INSERT INTO webhooks (id, inbox_id, url, secret) SELECT 'w1', id, 'https://example.com/hook', 's' FROM inboxes").run();
     await receive(eml(), inbox.address, { WEBHOOKS: { sendBatch: async () => {} } as any });
 
     const res = await api(`/admin/inboxes/${inbox.address}`, { method: "DELETE", key: ADMIN_KEY });
@@ -66,7 +63,7 @@ describe("admin", () => {
       const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>();
       expect(row?.n).toBe(0);
     }
-    expect((await env.MAIL.list({ prefix: `${inbox.address}/` })).objects).toHaveLength(0);
+    expect((await env.MAIL.list()).objects).toHaveLength(0);
     expect((await api(`/admin/inboxes/${inbox.address}`, { method: "DELETE", key: ADMIN_KEY })).status).toBe(404);
   });
 });

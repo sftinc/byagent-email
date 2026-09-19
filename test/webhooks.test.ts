@@ -15,6 +15,8 @@ describe("webhook endpoints", () => {
 
     const a = (await (await api("/webhooks", { method: "POST", key, body: { url: "https://a.example/hook" } })).json()) as any;
     const b = (await (await api("/webhooks", { method: "POST", key, body: { url: "https://b.example/hook" } })).json()) as any;
+    expect(a).toEqual({ id: expect.any(String), url: "https://a.example/hook", secret: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    expect(b.secret).not.toBe(a.secret);
     const list = (await (await api("/webhooks", { key })).json()) as { webhooks: any[] };
     expect(list.webhooks).toHaveLength(2);
 
@@ -39,17 +41,17 @@ describe("webhook endpoints", () => {
 describe("webhook delivery", () => {
   async function setup() {
     const inbox = await createInbox("agent");
-    const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string };
+    const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string; secret: string };
     await receive(eml({ subject: "Ping" }), inbox.address, { WEBHOOKS: { sendBatch: vi.fn() } as any });
     const row = await env.DB.prepare("SELECT id FROM messages").first<{ id: string }>();
     const batch = createMessageBatch("byagent-email-webhooks", [
-      { id: "job-1", timestamp: Date.now(), attempts: 1, body: { webhookId: hook.id, inbox: inbox.address, messageId: row!.id } },
+      { id: "job-1", timestamp: Date.now(), attempts: 1, body: { webhookId: hook.id, messageId: row!.id } },
     ]);
-    return { inbox, messageId: row!.id, batch };
+    return { inbox, hook, messageId: row!.id, batch };
   }
 
   it("posts a signed summary and acks on 2xx", async () => {
-    const { inbox, messageId, batch } = await setup();
+    const { inbox, hook, messageId, batch } = await setup();
     const fetchMock = vi.fn(async () => new Response("ok"));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -61,7 +63,7 @@ describe("webhook delivery", () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://agent.example/hook");
     const headers = init.headers as Record<string, string>;
-    const expected = await hmacSha256(inbox.webhook_secret, `${headers["X-Timestamp"]}.${init.body}`);
+    const expected = await hmacSha256(hook.secret, `${headers["X-Timestamp"]}.${init.body}`);
     expect(headers["X-Signature"]).toBe(`sha256=${expected}`);
     expect(JSON.parse(init.body as string)).toEqual({
       inbox: inbox.address,
@@ -88,8 +90,8 @@ describe("webhook delivery", () => {
   });
 
   it("acks and skips when the webhook was removed", async () => {
-    const { inbox, batch } = await setup();
-    await env.DB.prepare("DELETE FROM webhooks WHERE inbox = ?").bind(inbox.address).run();
+    const { batch } = await setup();
+    await env.DB.prepare("DELETE FROM webhooks").run();
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const ctx = createExecutionContext();

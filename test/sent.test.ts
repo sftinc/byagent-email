@@ -35,7 +35,7 @@ describe("sent mail", () => {
         id: sent.id,
         direction: "out",
         from: inbox.address,
-        to: ["a@x.com", "b@x.com", "c@x.com"],
+        recipients: ["a@x.com", "b@x.com", "c@x.com"],
         subject: "Report",
         received_at: expect.any(Number),
         read: true,
@@ -74,7 +74,7 @@ describe("sent mail", () => {
     const all = await list(inbox.api_key, "?direction=all");
     expect(all.map((m) => m.direction).sort()).toEqual(["in", "out"]);
     expect((await list(inbox.api_key, "?direction=all&to=C@X.COM")).map((m) => m.direction)).toEqual(["out"]);
-    expect((await list(inbox.api_key, "?to=agent@")).map((m) => m.to)).toEqual([["agent@email.example.com"]]);
+    expect((await list(inbox.api_key, "?to=agent@")).map((m) => m.recipients)).toEqual([["agent@email.example.com"]]);
     expect((await api("/messages?direction=sent", { key: inbox.api_key })).status).toBe(400);
   });
 

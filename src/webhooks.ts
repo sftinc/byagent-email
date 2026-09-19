@@ -5,15 +5,15 @@ import { loadMessage, summarize } from "./mail";
 // Returns true when the job is finished (delivered, or nothing left to deliver).
 export async function deliverWebhook(job: WebhookJob, env: Env): Promise<boolean> {
   const hook = await env.DB.prepare(
-    "SELECT w.url, i.webhook_secret AS secret FROM webhooks w JOIN inboxes i ON i.address = w.inbox WHERE w.id = ?",
+    "SELECT w.url, w.secret, w.inbox_id, i.address FROM webhooks w JOIN inboxes i ON i.id = w.inbox_id WHERE w.id = ?",
   )
     .bind(job.webhookId)
-    .first<{ url: string; secret: string }>();
-  const email = hook && (await loadMessage(env, job.inbox, job.messageId, "in"));
+    .first<{ url: string; secret: string; inbox_id: string; address: string }>();
+  const email = hook && (await loadMessage(env, hook.inbox_id, job.messageId, "in"));
   if (!hook || !email) return true;
 
   const { html, cc, bcc, ...message } = summarize(job.messageId, email);
-  const body = JSON.stringify({ inbox: job.inbox, message });
+  const body = JSON.stringify({ inbox: hook.address, message });
   const timestamp = String(Date.now());
   const signature = await hmacSha256(hook.secret, `${timestamp}.${body}`);
 
