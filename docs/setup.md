@@ -1,0 +1,66 @@
+# Setup
+
+## Requirements
+
+- One or more domains on Cloudflare DNS. A subdomain (e.g. `mail.example.com`) works too.
+- The Workers Paid plan, which Email Service sending requires.
+- Node.js 20+ and `npx wrangler login`.
+
+## Deploy
+
+```bash
+npm install
+npm run setup api.example.com
+```
+
+The setup command:
+
+- creates the D1 database, R2 bucket and queue,
+- writes `wrangler.jsonc` (gitignored). The hostname is optional: it serves the API on that hostname
+  as a custom domain. Leave it out to use the Worker's `workers.dev` URL,
+- applies the database schema and deploys the Worker,
+- generates an `ADMIN_KEY` and saves it to `.dev.vars` (gitignored), which `wrangler dev` also uses.
+  Load it with `source .dev.vars`.
+
+Setup is safe to re-run. It keeps existing resources, data and the `ADMIN_KEY` in `.dev.vars`. To
+rotate the admin key, delete that line and re-run. After pulling updates, re-run it to apply any new
+database migrations and redeploy.
+
+## Each email domain
+
+In the Cloudflare dashboard:
+
+1. **Email > Email Sending > Onboard Domain**, and choose the domain. This adds the MX, SPF, DKIM and
+   DMARC records.
+2. **Email > Email Routing**: if you use a subdomain, first add it under
+   **apex domain > Settings > Subdomains**.
+3. In Email Routing's rules for the domain, set the **catch-all** rule to
+   **Send to a Worker > byagent-email**.
+
+Enabling Email Routing replaces the domain's MX records, so use a domain (or subdomain) that doesn't
+already receive mail.
+
+Creating an inbox checks that its domain's MX records point at Cloudflare Email Routing, which catches
+typos and domains that aren't set up yet. It can't confirm that the catch-all rule targets this
+Worker, so check that step in the dashboard.
+
+## Configuration
+
+| Name | Where | Default | |
+|---|---|---|---|
+| `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `0` | Mail older than this many days is deleted daily ([a soft delete](concepts.md#deleting)). `0` never deletes it. |
+| `ADMIN_KEY` | Worker secret, plus `.dev.vars` locally | set by setup | Admin API key |
+
+To add or change the API hostname later, set `routes` in `wrangler.jsonc` to
+`[{ "pattern": "api.example.com", "custom_domain": true }]` and redeploy.
+
+`GET /health` needs no key: it returns `{"ok":true}`, or a 503 if the database is unreachable.
+
+## Development
+
+```bash
+npm test          # Vitest inside the Workers runtime
+npm run typecheck
+npm run deploy    # deploy the current code
+npm run types     # regenerate worker-configuration.d.ts after changing bindings
+```
