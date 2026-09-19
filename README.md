@@ -24,7 +24,9 @@ The setup command:
 - creates the D1 database, R2 bucket and queue,
 - writes `wrangler.jsonc` (gitignored). `--api` is optional: it serves the API on that hostname as a custom domain. Leave it out to use the Worker's `workers.dev` URL,
 - applies the database schema and deploys the Worker,
-- generates a new `ADMIN_KEY` and saves it to `.dev.vars` (gitignored), which `wrangler dev` also uses. Load it with `source .dev.vars`.
+- generates an `ADMIN_KEY` and saves it to `.dev.vars` (gitignored), which `wrangler dev` also uses. Load it with `source .dev.vars`.
+
+Setup is safe to re-run. It keeps existing resources, data and the `ADMIN_KEY` in `.dev.vars`. To rotate the admin key, delete that line and re-run.
 
 Then, for each email domain, in the Cloudflare dashboard:
 
