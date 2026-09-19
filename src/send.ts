@@ -42,10 +42,20 @@ export function buildEmail(body: any, from: string): Result {
     }
   }
 
+  // The send binding treats a string `content` as literal text, so decode base64 to bytes.
+  let files: Uint8Array[];
+  try {
+    files = attachments.map((a) => Uint8Array.from(atob(a.content), (c) => c.charCodeAt(0)));
+  } catch {
+    return { ok: false, status: 400, error: "Attachment `content` must be valid base64" };
+  }
+
+  // Cloudflare's 5 MiB limit applies to the raw content (checked against production).
+  const encoder = new TextEncoder();
   const size =
-    (body.text?.length ?? 0) +
-    (body.html?.length ?? 0) +
-    attachments.reduce((sum, a) => sum + Math.floor((a.content.length * 3) / 4), 0);
+    encoder.encode(body.text ?? "").length +
+    encoder.encode(body.html ?? "").length +
+    files.reduce((sum, f) => sum + f.length, 0);
   if (size > MAX_BYTES) return { ok: false, status: 413, error: "Message is larger than 5 MiB" };
 
   const message: EmailMessageBuilder = { from, to, subject: body.subject };
@@ -53,18 +63,13 @@ export function buildEmail(body: any, from: string): Result {
   if (bcc.length) message.bcc = bcc;
   if (typeof body.text === "string") message.text = body.text;
   if (typeof body.html === "string") message.html = body.html;
-  // The send binding treats a string `content` as literal text, so decode base64 to bytes.
-  try {
-    if (attachments.length) {
-      message.attachments = attachments.map((a) => ({
-        filename: a.filename,
-        type: a.type,
-        content: Uint8Array.from(atob(a.content), (c) => c.charCodeAt(0)),
-        disposition: "attachment",
-      }));
-    }
-  } catch {
-    return { ok: false, status: 400, error: "Attachment `content` must be valid base64" };
+  if (attachments.length) {
+    message.attachments = attachments.map((a, i) => ({
+      filename: a.filename,
+      type: a.type,
+      content: files[i],
+      disposition: "attachment",
+    }));
   }
   return { ok: true, message };
 }

@@ -53,6 +53,9 @@ describe("buildEmail", () => {
 
     const big = [{ filename: "big.bin", type: "application/octet-stream", content: "A".repeat(7_100_000) }];
     expect(buildEmail({ to: "a@x.com", subject: "Hi", text: "x", attachments: big }, FROM)).toMatchObject({ ok: false, status: 413 });
+
+    // 2.7M characters but 5.4M bytes in UTF-8: the limit counts bytes.
+    expect(buildEmail({ to: "a@x.com", subject: "Hi", text: "é".repeat(2_700_000) }, FROM)).toMatchObject({ ok: false, status: 413 });
   });
 });
 
