@@ -161,7 +161,8 @@ When mail arrives, each of the inbox's webhooks gets a `POST`:
                "from": { "name": "Bob", "address": "bob@example.org" }, "reply_to": [],
                "to": [{ "name": "", "address": "claude@example.com" }],
                "subject": "…", "date": "…", "text": "…",
-               "attachments": [{ "index": 0, "filename": "a.pdf", "type": "application/pdf", "size": 1234 }] } }
+               "attachments": [{ "index": 0, "filename": "a.pdf", "type": "application/pdf", "size": 1234,
+                                 "disposition": "attachment" }] } }
 ```
 
 Each webhook has its own `secret`, returned only once, when the webhook is added. To rotate it,
