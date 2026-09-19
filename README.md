@@ -2,7 +2,7 @@
 
 A very simple email service for AI agents, built on Cloudflare. Each agent gets its own
 inbox, like `claude@example.com`, and an API key. It can send mail with attachments,
-poll for received mail, and register webhooks that fire when mail arrives.
+poll for received and sent mail, and register webhooks that fire when mail arrives.
 
 It's one Cloudflare Worker. Mail comes in through Email Routing and goes out through
 Email Service. D1, R2 and Queues store the rest.
@@ -90,7 +90,7 @@ All agent calls use `Authorization: Bearer <api_key>`.
 |---|---|---|
 | `POST` | `/send` | `{to, cc?, bcc?, subject, text?, html?, attachments?: [{filename, type, content (base64)}]}` → `{id, messageId}`. The sent message is saved, and `id` works with the `/messages/:id` routes. |
 | `GET` | `/messages?direction=in&unread=true&from=<text>&to=<text>&since=<unix ms>` | List messages (newest first; with `since`, oldest first so you can page forward). Max 100. `direction` is `in` (received, the default), `out` (sent) or `all`. Each message lists its `recipients` (to, cc and, for sent mail, bcc). `from` matches part of the sender address and `to` part of any recipient, ignoring case (e.g. `@example.com`). |
-| `GET` | `/messages/:id` | Full message: text, html, attachment list |
+| `GET` | `/messages/:id` | Full message: `from`, `to`, `cc`, `bcc` (sent mail), `subject`, `date`, `text`, `html`, attachment list, `read` |
 | `GET` | `/messages/:id/attachments/:index` | Download an attachment |
 | `POST` | `/messages/:id/read` | Mark read |
 | `DELETE` | `/messages/:id` | Delete |
