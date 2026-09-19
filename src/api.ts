@@ -5,6 +5,7 @@ import { admin } from "./admin";
 import { sha256 } from "./crypto";
 import type { Env } from "./env";
 import { loadMessage, purgeMessages, summarize } from "./mail";
+import { buildEmail } from "./send";
 
 type App = { Bindings: Env; Variables: { inbox: string } };
 
@@ -114,4 +115,15 @@ app.delete("/webhooks/:id", async (c) => {
     .run();
   if (meta.changes === 0) return c.json({ error: "Webhook not found" }, 404);
   return c.json({ ok: true });
+});
+
+app.post("/send", async (c) => {
+  const built = buildEmail(await c.req.json().catch(() => null), c.get("inbox"));
+  if (!built.ok) return c.json({ error: built.error }, built.status);
+  try {
+    const { messageId } = await c.env.EMAIL.send(built.message);
+    return c.json({ messageId });
+  } catch (err: any) {
+    return c.json({ error: err?.code ?? err?.message ?? "Send failed" }, 502);
+  }
 });
