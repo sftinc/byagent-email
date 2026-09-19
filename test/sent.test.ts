@@ -39,7 +39,7 @@ describe("sent mail", () => {
         subject: "Report",
         attachments: [{ index: 0, filename: "a.txt", type: "text/plain", size: 2, disposition: "attachment" }],
         created_at: expect.any(Number),
-        read: true,
+        read_at: expect.any(Number),
         deleted_at: null,
       },
     ]);
@@ -67,8 +67,8 @@ describe("sent mail", () => {
       html: null,
       attachments: [{ index: 0, filename: "a.txt", type: "text/plain", size: 2, disposition: "attachment" }],
       headers: [],
-      read: true,
       created_at: expect.any(Number),
+      read_at: expect.any(Number),
       deleted_at: null,
     });
 

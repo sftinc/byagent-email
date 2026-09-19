@@ -37,11 +37,10 @@ CREATE TABLE messages (
   -- content
   subject     TEXT,
   attachments TEXT NOT NULL,    -- [{filename, type, size, disposition}], '[]' when there are none
-  -- state
-  read       INTEGER NOT NULL DEFAULT 0,
   -- dates
-  created_at INTEGER NOT NULL,  -- received or sent
-  deleted_at INTEGER
+  created_at  INTEGER NOT NULL, -- received or sent
+  read_at     INTEGER,          -- null until the agent marks it read
+  deleted_at  INTEGER
 );
 
 -- One inbox per address, deleted or not: a deleted inbox is restored, never recreated.

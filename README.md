@@ -123,9 +123,9 @@ curl -X DELETE $URL/messages/01a0… -H "Authorization: Bearer $API_KEY"
 |---|---|---|
 | `POST` | `/send` | `{to, cc?, bcc?, subject, text?, html?, attachments?: [{filename, type, content (base64)}], reply_to_id?}` → `{id, messageId}`. The sent message is saved, and `id` works with the `/messages/:id` routes. |
 | `GET` | `/messages?direction=in&unread=true&deleted=false&from=<text>&to=<text>&subject=<text>&before=<id>&after=<id>` | List messages, 20 per page, newest first → `{messages, paging: {before, after}}`. For older mail pass `paging.before` as `before`, for newer mail `paging.after` as `after`; `null` means there is no more that way. `direction` is `in` (received, the default), `out` (sent) or `all`. Each message has `from` as `{name, address}` and lists its `recipients` (to, cc and, for sent mail, bcc). `from` matches part of the sender address, `to` part of any recipient and `subject` part of the subject, all ignoring case (e.g. `from=@example.com`). |
-| `GET` | `/messages/:id` | Full message, deleted or not: `message_id`, `in_reply_to`, `references`, `from`, `reply_to`, `to`, `cc`, `bcc` (sent mail), `subject`, `date`, `text`, `html`, attachment list, all `headers`, `direction`, `read`, `created_at`, `deleted_at`. Addresses are `{name, address}`. |
+| `GET` | `/messages/:id` | Full message, deleted or not: `message_id`, `in_reply_to`, `references`, `from`, `reply_to`, `to`, `cc`, `bcc` (sent mail), `subject`, `date`, `text`, `html`, attachment list, all `headers`, `direction`, `created_at`, `read_at`, `deleted_at`. Addresses are `{name, address}`. |
 | `GET` | `/messages/:id/attachments/:index` | Download an attachment (`index` from the message's `attachments`) |
-| `POST` | `/messages/:id/read` | Mark read |
+| `POST` | `/messages/:id/read` | Mark read: sets `read_at`, keeping the first time |
 | `DELETE` | `/messages/:id` | Delete |
 | `POST` | `/messages/:id/restore` | Undo a delete |
 | `GET` / `POST` / `DELETE` | `/webhooks[/:id]?deleted=true` | List, add (`{url}`, https only → `{id, url, secret}`), remove |
@@ -137,6 +137,9 @@ Mail is parsed when it arrives and stored in R2 as `<inbox id>/<message id>/mess
 attachment as its own file beside it. Reads never re-parse, and both received and sent mail are stored
 the same way. Every message, in lists and on its own, carries its `attachments` (`index`, `filename`,
 `type`, `size`, `disposition`).
+
+All timestamps are Unix milliseconds: `created_at`, `read_at` (`null` until read), `deleted_at` and an
+inbox's `updated_at`. A message's `date` is different: it is the email's own Date header, as ISO 8601.
 
 To reply in a thread, pass `reply_to_id`: the `id` of a message in this inbox. The Worker sets the
 `In-Reply-To` and `References` headers from it, so the reply threads in the recipient's mail client.

@@ -28,8 +28,8 @@ describe("messages", () => {
           recipients: ["agent@email.example.com"],
           subject: "First",
           attachments: [{ index: 0, filename: "notes.txt", type: "text/plain", size: 10, disposition: "attachment" }],
-          read: false,
           created_at: expect.any(Number),
+          read_at: null,
           deleted_at: null,
         },
       ],
@@ -117,8 +117,8 @@ describe("messages", () => {
       html: null,
       attachments: [{ index: 0, filename: "notes.txt", type: "text/plain", size: 10, disposition: "attachment" }],
       headers: expect.arrayContaining([{ key: "subject", value: "First" }]),
-      read: false,
       created_at: expect.any(Number),
+      read_at: null,
       deleted_at: null,
     });
   });
@@ -165,7 +165,11 @@ describe("messages", () => {
   it("marks read and soft-deletes, keeping the stored mail", async () => {
     const { key, id } = await setup();
     expect((await api(`/messages/${id}/read`, { method: "POST", key })).status).toBe(200);
-    expect(((await (await api(`/messages/${id}`, { key })).json()) as any).read).toBe(true);
+    const readAt = ((await (await api(`/messages/${id}`, { key })).json()) as any).read_at;
+    expect(readAt).toEqual(expect.any(Number));
+    // Marking it read again keeps the first time.
+    await api(`/messages/${id}/read`, { method: "POST", key });
+    expect(((await (await api(`/messages/${id}`, { key })).json()) as any).read_at).toBe(readAt);
 
     expect((await api(`/messages/${id}`, { method: "DELETE", key })).status).toBe(200);
     expect((await api(`/messages/${id}/read`, { method: "POST", key })).status).toBe(404);

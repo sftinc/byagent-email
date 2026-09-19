@@ -57,7 +57,7 @@ app.get("/messages", async (c) => {
     where += " AND direction = ?";
     params.push(direction);
   }
-  if (c.req.query("unread") === "true") where += " AND read = 0";
+  if (c.req.query("unread") === "true") where += " AND read_at IS NULL";
   for (const [param, column] of [["from", "from_addr"], ["to", "recipients"], ["subject", "subject"]]) {
     const value = c.req.query(param);
     if (value) {
@@ -72,11 +72,11 @@ app.get("/messages", async (c) => {
   // Fetch one extra row to learn whether there's more in the direction we're paging.
   const cursor = after ? " AND id > ? ORDER BY id ASC" : before ? " AND id < ? ORDER BY id DESC" : " ORDER BY id DESC";
   const { results } = await c.env.DB.prepare(
-    `SELECT id, direction, from_addr, from_name, recipients, subject, attachments, read, created_at, deleted_at
+    `SELECT id, direction, from_addr, from_name, recipients, subject, attachments, created_at, read_at, deleted_at
      FROM messages WHERE ${where}${cursor} LIMIT 21`,
   )
     .bind(...params, ...(after || before ? [after || before] : []))
-    .all<{ id: string; from_addr: string; from_name: string; recipients: string; attachments: string; read: number }>();
+    .all<{ id: string; from_addr: string; from_name: string; recipients: string; attachments: string }>();
   const more = results.length > 20;
   const page = results.slice(0, 20);
   if (after) page.reverse();
@@ -96,7 +96,6 @@ app.get("/messages", async (c) => {
       from: { name: from_name, address: from_addr },
       recipients: m.recipients ? m.recipients.split(",") : [],
       attachments: (JSON.parse(m.attachments) as Attachment[]).map((a, index) => ({ index, ...a })),
-      read: m.read === 1,
     })),
     paging: { before: hasOlder ? oldest : null, after: hasNewer ? newest : null },
   });
@@ -104,9 +103,11 @@ app.get("/messages", async (c) => {
 
 function findMessage(env: Env, inboxId: string, id: string) {
   // Deleted messages are still readable by id; only changing them 404s.
-  return env.DB.prepare("SELECT direction, attachments, read, created_at, deleted_at FROM messages WHERE id = ? AND inbox_id = ?")
+  return env.DB.prepare(
+    "SELECT direction, attachments, created_at, read_at, deleted_at FROM messages WHERE id = ? AND inbox_id = ?",
+  )
     .bind(id, inboxId)
-    .first<{ direction: string; attachments: string; read: number; created_at: number; deleted_at: number | null }>();
+    .first<{ direction: string; attachments: string; created_at: number; read_at: number | null; deleted_at: number | null }>();
 }
 
 app.get("/messages/:id", async (c) => {
@@ -119,8 +120,8 @@ app.get("/messages/:id", async (c) => {
     ...stored,
     attachments: stored.attachments.map((a, index) => ({ index, ...a })),
     direction: row.direction,
-    read: row.read === 1,
     created_at: row.created_at,
+    read_at: row.read_at,
     deleted_at: row.deleted_at,
   });
 });
@@ -142,8 +143,11 @@ app.get("/messages/:id/attachments/:index", async (c) => {
 });
 
 app.post("/messages/:id/read", async (c) => {
-  const { meta } = await c.env.DB.prepare("UPDATE messages SET read = 1 WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL")
-    .bind(c.req.param("id"), c.get("inbox").id)
+  // Keeps the first read time if it is already read.
+  const { meta } = await c.env.DB.prepare(
+    "UPDATE messages SET read_at = COALESCE(read_at, ?) WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL",
+  )
+    .bind(Date.now(), c.req.param("id"), c.get("inbox").id)
     .run();
   if (meta.changes === 0) return c.json({ error: "Message not found" }, 404);
   return c.json({ ok: true });

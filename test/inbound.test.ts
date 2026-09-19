@@ -23,7 +23,7 @@ describe("incoming mail", () => {
       from_addr: "sender@example.org",
       from_name: "Sender",
       subject: "Report",
-      read: 0,
+      read_at: null,
       attachments: JSON.stringify([{ filename: "notes.txt", type: "text/plain", size: 10, disposition: "attachment" }]),
     });
 

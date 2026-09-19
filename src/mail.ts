@@ -108,6 +108,7 @@ export async function saveSent(env: Env, inbox: Inbox, message: EmailMessageBuil
   const [to, cc, bcc] = [message.to, message.cc, message.bcc].map((list) => (list ?? []) as string[]);
   const named = (address: string): Contact => ({ name: "", address });
   const files = (message.attachments ?? []).map((a) => a.content as Uint8Array);
+  const now = Date.now();
   const stored: StoredMessage = {
     message_id: messageId,
     in_reply_to: message.headers?.["In-Reply-To"] ?? null,
@@ -132,8 +133,8 @@ export async function saveSent(env: Env, inbox: Inbox, message: EmailMessageBuil
 
   await saveMessage(env, inbox.id, id, stored, files);
   await env.DB.prepare(
-    `INSERT INTO messages (id, inbox_id, direction, from_addr, from_name, recipients, subject, attachments, read, created_at)
-     VALUES (?, ?, 'out', ?, ?, ?, ?, ?, 1, ?)`,
+    `INSERT INTO messages (id, inbox_id, direction, from_addr, from_name, recipients, subject, attachments, created_at, read_at)
+     VALUES (?, ?, 'out', ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -143,7 +144,8 @@ export async function saveSent(env: Env, inbox: Inbox, message: EmailMessageBuil
       [...to, ...cc, ...bcc].join(",").toLowerCase(),
       message.subject,
       JSON.stringify(stored.attachments),
-      Date.now(),
+      now,
+      now, // sent mail counts as read
     )
     .run();
   return id;
