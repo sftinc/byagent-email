@@ -48,7 +48,7 @@ Worker, so check that step in the dashboard.
 
 | Name | Where | Default | |
 |---|---|---|---|
-| `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `0` | Mail older than this many days is deleted daily ([a soft delete](concepts.md#deleting)). `0` never deletes it. |
+| `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `0` | Mail older than this many days is [purged](concepts.md#purging) daily at 03:00 UTC, permanently, with its files. Messages only. `0` keeps mail forever. |
 | `ADMIN_KEY` | Worker secret, plus `.dev.vars` locally | set by setup | Admin API key |
 
 To add or change the API hostname later, set `routes` in `wrangler.jsonc` to

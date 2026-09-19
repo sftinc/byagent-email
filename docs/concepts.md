@@ -44,6 +44,9 @@ Purge is the one permanent operation, and the only thing that frees storage.
 - On a live inbox it removes what is already deleted, and nothing in use.
 - On a deleted inbox it removes the inbox itself with all of its mail, files and webhooks. That needs
   `?confirm=true`, and it frees the address.
+- `RETENTION_DAYS` purges on a schedule: each night it removes messages older than that many days,
+  deleted or not, with their files. It never touches inboxes or webhooks. See
+  [Configuration](setup.md#configuration).
 
 See [`POST /admin/inboxes/:id/purge`](admin-api.md#purge).
 
