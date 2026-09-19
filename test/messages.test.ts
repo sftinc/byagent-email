@@ -1,11 +1,81 @@
+import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import { api, reset } from "./helpers";
+import { api, createInbox, eml, receive, reset } from "./helpers";
 
 beforeEach(reset);
+
+async function setup() {
+  const inbox = await createInbox("agent");
+  await receive(eml({ subject: "First", attachment: { filename: "notes.txt", content: "file body" } }), inbox.address);
+  const row = await env.DB.prepare("SELECT id FROM messages").first<{ id: string }>();
+  return { key: inbox.api_key, id: row!.id };
+}
 
 describe("messages", () => {
   it("requires an inbox key", async () => {
     expect((await api("/messages")).status).toBe(401);
     expect((await api("/messages", { key: "nope" })).status).toBe(401);
+  });
+
+  it("lists messages with unread and since filters", async () => {
+    const { key, id } = await setup();
+    const all = (await (await api("/messages", { key })).json()) as { messages: any[] };
+    expect(all.messages).toEqual([
+      { id, from: "sender@example.org", subject: "First", received_at: expect.any(Number), read: false },
+    ]);
+
+    await api(`/messages/${id}/read`, { method: "POST", key });
+    const unread = (await (await api("/messages?unread=true", { key })).json()) as { messages: any[] };
+    expect(unread.messages).toEqual([]);
+
+    const future = Date.now() + 60_000;
+    const since = (await (await api(`/messages?since=${future}`, { key })).json()) as { messages: any[] };
+    expect(since.messages).toEqual([]);
+  });
+
+  it("only shows an inbox its own messages", async () => {
+    const { id } = await setup();
+    const other = await createInbox("other");
+    const list = (await (await api("/messages", { key: other.api_key })).json()) as { messages: any[] };
+    expect(list.messages).toEqual([]);
+    expect((await api(`/messages/${id}`, { key: other.api_key })).status).toBe(404);
+  });
+
+  it("returns the full parsed message", async () => {
+    const { key, id } = await setup();
+    const res = await api(`/messages/${id}`, { key });
+    expect(await res.json()).toEqual({
+      id,
+      from: "sender@example.org",
+      to: ["agent@email.example.com"],
+      cc: [],
+      subject: "First",
+      date: expect.any(String),
+      text: "Hi there\n",
+      html: null,
+      attachments: [{ index: 0, filename: "notes.txt", type: "text/plain", size: 10 }],
+      read: false,
+    });
+  });
+
+  it("downloads an attachment", async () => {
+    const { key, id } = await setup();
+    const res = await api(`/messages/${id}/attachments/0`, { key });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("text/plain");
+    expect(res.headers.get("Content-Disposition")).toBe('attachment; filename="notes.txt"');
+    expect(await res.text()).toBe("file body\n");
+    expect((await api(`/messages/${id}/attachments/5`, { key })).status).toBe(404);
+  });
+
+  it("marks read and deletes", async () => {
+    const { key, id } = await setup();
+    expect((await api(`/messages/${id}/read`, { method: "POST", key })).status).toBe(200);
+    expect(((await (await api(`/messages/${id}`, { key })).json()) as any).read).toBe(true);
+
+    expect((await api(`/messages/${id}`, { method: "DELETE", key })).status).toBe(200);
+    expect((await api(`/messages/${id}`, { key })).status).toBe(404);
+    expect((await env.MAIL.list()).objects).toHaveLength(0);
+    expect((await api(`/messages/${id}/read`, { method: "POST", key })).status).toBe(404);
   });
 });

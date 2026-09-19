@@ -4,6 +4,7 @@ import { createMiddleware } from "hono/factory";
 import { admin } from "./admin";
 import { sha256 } from "./crypto";
 import type { Env } from "./env";
+import { loadMessage, purgeMessages, summarize } from "./mail";
 
 type App = { Bindings: Env; Variables: { inbox: string } };
 
@@ -43,4 +44,48 @@ app.get("/messages", async (c) => {
   sql += " ORDER BY received_at DESC LIMIT 100";
   const { results } = await c.env.DB.prepare(sql).bind(...params).all<{ read: number }>();
   return c.json({ messages: results.map((m) => ({ ...m, read: m.read === 1 })) });
+});
+
+async function findMessage(env: Env, inbox: string, id: string) {
+  return env.DB.prepare("SELECT read FROM messages WHERE id = ? AND inbox = ?")
+    .bind(id, inbox)
+    .first<{ read: number }>();
+}
+
+app.get("/messages/:id", async (c) => {
+  const id = c.req.param("id");
+  const row = await findMessage(c.env, c.get("inbox"), id);
+  const email = row && (await loadMessage(c.env, c.get("inbox"), id));
+  if (!row || !email) return c.json({ error: "Message not found" }, 404);
+  return c.json({ ...summarize(id, email), read: row.read === 1 });
+});
+
+app.get("/messages/:id/attachments/:index", async (c) => {
+  const id = c.req.param("id");
+  const row = await findMessage(c.env, c.get("inbox"), id);
+  const email = row && (await loadMessage(c.env, c.get("inbox"), id));
+  const attachment = email?.attachments[Number(c.req.param("index"))];
+  if (!attachment) return c.json({ error: "Attachment not found" }, 404);
+  const filename = (attachment.filename ?? "attachment").replace(/["\\\r\n]/g, "");
+  return new Response(attachment.content, {
+    headers: {
+      "Content-Type": attachment.mimeType,
+      "Content-Disposition": `attachment; filename="${filename}"`,
+    },
+  });
+});
+
+app.post("/messages/:id/read", async (c) => {
+  const { meta } = await c.env.DB.prepare("UPDATE messages SET read = 1 WHERE id = ? AND inbox = ?")
+    .bind(c.req.param("id"), c.get("inbox"))
+    .run();
+  if (meta.changes === 0) return c.json({ error: "Message not found" }, 404);
+  return c.json({ ok: true });
+});
+
+app.delete("/messages/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!(await findMessage(c.env, c.get("inbox"), id))) return c.json({ error: "Message not found" }, 404);
+  await purgeMessages(c.env, "id = ?", id);
+  return c.json({ ok: true });
 });

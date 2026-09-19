@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { randomToken, sha256 } from "./crypto";
 import type { Env } from "./env";
+import { purgeMessages } from "./mail";
 
 export const admin = new Hono<{ Bindings: Env }>();
 
@@ -37,6 +38,19 @@ admin.get("/inboxes", async (c) => {
     "SELECT address, created_at FROM inboxes ORDER BY address",
   ).all();
   return c.json({ inboxes: results });
+});
+
+admin.delete("/inboxes/:address", async (c) => {
+  const address = c.req.param("address").toLowerCase();
+  const exists = await c.env.DB.prepare("SELECT 1 FROM inboxes WHERE address = ?").bind(address).first();
+  if (!exists) return c.json({ error: "Inbox not found" }, 404);
+
+  await purgeMessages(c.env, "inbox = ?", address);
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM webhooks WHERE inbox = ?").bind(address),
+    c.env.DB.prepare("DELETE FROM inboxes WHERE address = ?").bind(address),
+  ]);
+  return c.json({ ok: true });
 });
 
 admin.post("/inboxes/:address/rotate-key", async (c) => {

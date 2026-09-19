@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import { ADMIN_KEY, api, createInbox, reset } from "./helpers";
+import { ADMIN_KEY, api, createInbox, eml, receive, reset } from "./helpers";
 
 beforeEach(reset);
 
@@ -37,5 +37,22 @@ describe("admin", () => {
     const { api_key } = (await res.json()) as { api_key: string };
     expect((await api("/messages", { key: inbox.api_key })).status).toBe(401);
     expect((await api("/messages", { key: api_key })).status).toBe(200);
+  });
+
+  it("deletes an inbox with its webhooks, messages and stored mail", async () => {
+    const inbox = await createInbox("agent");
+    await env.DB.prepare("INSERT INTO webhooks (id, inbox, url) VALUES ('w1', ?, 'https://example.com/hook')")
+      .bind(inbox.address)
+      .run();
+    await receive(eml(), inbox.address, { WEBHOOKS: { sendBatch: async () => {} } as any });
+
+    const res = await api(`/admin/inboxes/${inbox.address}`, { method: "DELETE", key: ADMIN_KEY });
+    expect(res.status).toBe(200);
+    for (const table of ["inboxes", "webhooks", "messages"]) {
+      const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>();
+      expect(row?.n).toBe(0);
+    }
+    expect((await env.MAIL.list({ prefix: `${inbox.address}/` })).objects).toHaveLength(0);
+    expect((await api(`/admin/inboxes/${inbox.address}`, { method: "DELETE", key: ADMIN_KEY })).status).toBe(404);
   });
 });
