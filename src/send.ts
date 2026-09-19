@@ -45,7 +45,7 @@ export function buildEmail(body: any, from: string): Result {
   // The send binding treats a string `content` as literal text, so decode base64 to bytes.
   let files: Uint8Array[];
   try {
-    files = attachments.map((a) => Uint8Array.from(atob(a.content), (c) => c.charCodeAt(0)));
+    files = attachments.map((a) => Uint8Array.fromBase64(a.content));
   } catch {
     return { ok: false, status: 400, error: "Attachment `content` must be valid base64" };
   }

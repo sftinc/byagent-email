@@ -21,7 +21,15 @@ describe("messages", () => {
     const { key, id } = await setup();
     const all = (await (await api("/messages", { key })).json()) as { messages: any[] };
     expect(all.messages).toEqual([
-      { id, from: "sender@example.org", subject: "First", received_at: expect.any(Number), read: false },
+      {
+        id,
+        direction: "in",
+        from: "sender@example.org",
+        to: ["agent@email.example.com"],
+        subject: "First",
+        received_at: expect.any(Number),
+        read: false,
+      },
     ]);
 
     await api(`/messages/${id}/read`, { method: "POST", key });
@@ -31,6 +39,19 @@ describe("messages", () => {
     const future = Date.now() + 60_000;
     const since = (await (await api(`/messages?since=${future}`, { key })).json()) as { messages: any[] };
     expect(since.messages).toEqual([]);
+  });
+
+  it("filters by part of the sender address, ignoring case", async () => {
+    const inbox = await createInbox("agent");
+    await receive(eml({ from: "bob@example.org" }), inbox.address);
+    await receive(eml({ from: "alice@other.com" }), inbox.address);
+    const from = async (q: string) =>
+      ((await (await api(`/messages?from=${encodeURIComponent(q)}`, { key: inbox.api_key })).json()) as { messages: any[] })
+        .messages.map((m) => m.from);
+
+    expect(await from("BOB@example.org")).toEqual(["bob@example.org"]);
+    expect(await from("@other.com")).toEqual(["alice@other.com"]);
+    expect(await from("nobody")).toEqual([]);
   });
 
   it("orders since results oldest first, and the default newest first", async () => {
@@ -72,6 +93,7 @@ describe("messages", () => {
       from: "sender@example.org",
       to: ["agent@email.example.com"],
       cc: [],
+      bcc: [],
       subject: "First",
       date: expect.any(String),
       text: "Hi there\n",

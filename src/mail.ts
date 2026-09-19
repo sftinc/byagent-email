@@ -1,16 +1,51 @@
 import PostalMime, { type Address, type Email } from "postal-mime";
 import type { Env } from "./env";
 
-export function rawKey(inbox: string, id: string): string {
-  return `${inbox}/${id}.eml`;
+export type Direction = "in" | "out";
+
+// Received mail is stored raw. Sent mail has no raw MIME, so it's stored as JSON in postal-mime's shape.
+export function mailKey(inbox: string, id: string, direction: Direction): string {
+  return `${inbox}/${id}.${direction === "in" ? "eml" : "json"}`;
 }
 
-export async function loadMessage(env: Env, inbox: string, id: string): Promise<Email | null> {
-  const object = await env.MAIL.get(rawKey(inbox, id));
-  return object ? PostalMime.parse(await object.arrayBuffer()) : null;
+export async function loadMessage(env: Env, inbox: string, id: string, direction: Direction): Promise<Email | null> {
+  const object = await env.MAIL.get(mailKey(inbox, id, direction));
+  if (!object) return null;
+  if (direction === "in") return PostalMime.parse(await object.arrayBuffer());
+  const email = await object.json<Email>();
+  email.attachments = email.attachments.map((a) => ({ ...a, content: Uint8Array.fromBase64(a.content as string) }));
+  return email;
 }
 
-function addresses(list: Address[] = []): string[] {
+// Saves a message built by buildEmail, whose recipients are string arrays and attachments are bytes.
+export async function saveSent(env: Env, inbox: string, message: EmailMessageBuilder): Promise<string> {
+  const id = crypto.randomUUID();
+  const [to, cc, bcc] = [message.to, message.cc, message.bcc].map((list) => (list ?? []) as string[]);
+  const email = {
+    from: { name: "", address: inbox },
+    to: to.map((address) => ({ name: "", address })),
+    cc: cc.map((address) => ({ name: "", address })),
+    bcc: bcc.map((address) => ({ name: "", address })),
+    subject: message.subject,
+    date: new Date().toISOString(),
+    text: message.text,
+    html: message.html,
+    attachments: (message.attachments ?? []).map((a) => ({
+      filename: a.filename,
+      mimeType: a.type,
+      content: (a.content as Uint8Array).toBase64(),
+    })),
+  };
+  await env.MAIL.put(mailKey(inbox, id, "out"), JSON.stringify(email));
+  await env.DB.prepare(
+    "INSERT INTO messages (id, inbox, from_addr, subject, received_at, read, direction, to_addrs) VALUES (?, ?, ?, ?, ?, 1, 'out', ?)",
+  )
+    .bind(id, inbox, inbox, message.subject, Date.now(), [...to, ...cc, ...bcc].join(",").toLowerCase())
+    .run();
+  return id;
+}
+
+export function addresses(list: Address[] = []): string[] {
   return list.flatMap((a) => (a.address ? [a.address] : (a.group ?? []).map((m) => m.address)));
 }
 
@@ -20,6 +55,7 @@ export function summarize(id: string, email: Email) {
     from: email.from?.address ?? "",
     to: addresses(email.to),
     cc: addresses(email.cc),
+    bcc: addresses(email.bcc),
     subject: email.subject ?? "",
     date: email.date ?? null,
     text: email.text ?? "",
@@ -36,11 +72,11 @@ export function summarize(id: string, email: Email) {
 // Deletes every message matching `where` (a fixed SQL fragment), from R2 and D1, in batches.
 export async function purgeMessages(env: Env, where: string, ...params: unknown[]): Promise<void> {
   while (true) {
-    const { results } = await env.DB.prepare(`SELECT id, inbox FROM messages WHERE ${where} LIMIT 100`)
+    const { results } = await env.DB.prepare(`SELECT id, inbox, direction FROM messages WHERE ${where} LIMIT 100`)
       .bind(...params)
-      .all<{ id: string; inbox: string }>();
+      .all<{ id: string; inbox: string; direction: Direction }>();
     if (results.length === 0) return;
-    await env.MAIL.delete(results.map((m) => rawKey(m.inbox, m.id)));
+    await env.MAIL.delete(results.map((m) => mailKey(m.inbox, m.id, m.direction)));
     await env.DB.batch(results.map((m) => env.DB.prepare("DELETE FROM messages WHERE id = ?").bind(m.id)));
   }
 }

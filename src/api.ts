@@ -4,7 +4,7 @@ import { createMiddleware } from "hono/factory";
 import { admin } from "./admin";
 import { sha256 } from "./crypto";
 import type { Env } from "./env";
-import { loadMessage, purgeMessages, summarize } from "./mail";
+import { type Direction, loadMessage, purgeMessages, saveSent, summarize } from "./mail";
 import { buildEmail } from "./send";
 
 type App = { Bindings: Env; Variables: { inbox: string } };
@@ -34,29 +34,45 @@ app.route("/admin", admin);
 app.use("*", except("/admin/*", inboxAuth));
 
 app.get("/messages", async (c) => {
-  let sql = 'SELECT id, from_addr AS "from", subject, received_at, read FROM messages WHERE inbox = ?';
+  let sql =
+    'SELECT id, direction, from_addr AS "from", to_addrs AS "to", subject, received_at, read FROM messages WHERE inbox = ?';
   const params: unknown[] = [c.get("inbox")];
+  const direction = c.req.query("direction") ?? "in";
+  if (!["in", "out", "all"].includes(direction)) return c.json({ error: "`direction` must be in, out or all" }, 400);
+  if (direction !== "all") {
+    sql += " AND direction = ?";
+    params.push(direction);
+  }
   if (c.req.query("unread") === "true") sql += " AND read = 0";
+  for (const [param, column] of [["from", "from_addr"], ["to", "to_addrs"]]) {
+    const value = c.req.query(param);
+    if (value) {
+      sql += ` AND instr(lower(${column}), lower(?)) > 0`;
+      params.push(value);
+    }
+  }
   const since = Number(c.req.query("since"));
   if (since > 0) {
     sql += " AND received_at > ?";
     params.push(since);
   }
   sql += since > 0 ? " ORDER BY received_at ASC LIMIT 100" : " ORDER BY received_at DESC LIMIT 100";
-  const { results } = await c.env.DB.prepare(sql).bind(...params).all<{ read: number }>();
-  return c.json({ messages: results.map((m) => ({ ...m, read: m.read === 1 })) });
+  const { results } = await c.env.DB.prepare(sql).bind(...params).all<{ to: string; read: number }>();
+  return c.json({
+    messages: results.map((m) => ({ ...m, to: m.to ? m.to.split(",") : [], read: m.read === 1 })),
+  });
 });
 
 async function findMessage(env: Env, inbox: string, id: string) {
-  return env.DB.prepare("SELECT read FROM messages WHERE id = ? AND inbox = ?")
+  return env.DB.prepare("SELECT read, direction FROM messages WHERE id = ? AND inbox = ?")
     .bind(id, inbox)
-    .first<{ read: number }>();
+    .first<{ read: number; direction: Direction }>();
 }
 
 app.get("/messages/:id", async (c) => {
   const id = c.req.param("id");
   const row = await findMessage(c.env, c.get("inbox"), id);
-  const email = row && (await loadMessage(c.env, c.get("inbox"), id));
+  const email = row && (await loadMessage(c.env, c.get("inbox"), id, row.direction));
   if (!row || !email) return c.json({ error: "Message not found" }, 404);
   return c.json({ ...summarize(id, email), read: row.read === 1 });
 });
@@ -64,7 +80,7 @@ app.get("/messages/:id", async (c) => {
 app.get("/messages/:id/attachments/:index", async (c) => {
   const id = c.req.param("id");
   const row = await findMessage(c.env, c.get("inbox"), id);
-  const email = row && (await loadMessage(c.env, c.get("inbox"), id));
+  const email = row && (await loadMessage(c.env, c.get("inbox"), id, row.direction));
   const attachment = email?.attachments[Number(c.req.param("index"))];
   if (!attachment) return c.json({ error: "Attachment not found" }, 404);
   const filename = attachment.filename ?? "attachment";
@@ -125,10 +141,12 @@ app.delete("/webhooks/:id", async (c) => {
 app.post("/send", async (c) => {
   const built = buildEmail(await c.req.json().catch(() => null), c.get("inbox"));
   if (!built.ok) return c.json({ error: built.error }, built.status);
+  let messageId: string;
   try {
-    const { messageId } = await c.env.EMAIL.send(built.message);
-    return c.json({ messageId });
+    ({ messageId } = await c.env.EMAIL.send(built.message));
   } catch (err: any) {
     return c.json({ error: err?.code ?? err?.message ?? "Send failed" }, 502);
   }
+  const id = await saveSent(c.env, c.get("inbox"), built.message);
+  return c.json({ id, messageId });
 });

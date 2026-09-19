@@ -65,7 +65,7 @@ describe("POST /send", () => {
     const send = vi.fn(async () => ({ messageId: "cf-123" }));
     const res = await api("/send", { method: "POST", key, body: { to: "a@x.com", subject: "Hi", text: "Hello" } }, { EMAIL: { send } as any });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ messageId: "cf-123" });
+    expect(await res.json()).toEqual({ id: expect.any(String), messageId: "cf-123" });
     expect(send).toHaveBeenCalledWith({ from: address, to: ["a@x.com"], subject: "Hi", text: "Hello" });
   });
 

@@ -44,7 +44,7 @@ The setup command:
 - applies the database schema and deploys the Worker,
 - generates an `ADMIN_KEY` and saves it to `.dev.vars` (gitignored), which `wrangler dev` also uses. Load it with `source .dev.vars`.
 
-Setup is safe to re-run. It keeps existing resources, data and the `ADMIN_KEY` in `.dev.vars`. To rotate the admin key, delete that line and re-run.
+Setup is safe to re-run. It keeps existing resources, data and the `ADMIN_KEY` in `.dev.vars`. To rotate the admin key, delete that line and re-run. After pulling updates, re-run it to apply any new database migrations and redeploy.
 
 Then, for each email domain, in the Cloudflare dashboard:
 
@@ -58,7 +58,7 @@ Enabling Email Routing replaces the domain's MX records, so use a domain (or sub
 
 | Name | Where | Default | |
 |---|---|---|---|
-| `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `0` | Received mail older than this many days is deleted daily. `0` keeps mail forever. |
+| `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `0` | Mail (received and sent) older than this many days is deleted daily. `0` keeps mail forever. |
 | `ADMIN_KEY` | Worker secret, plus `.dev.vars` locally | set by setup | Admin API key |
 
 To add or change the API hostname later, set `routes` in `wrangler.jsonc` to `[{ "pattern": "api.example.com", "custom_domain": true }]` and redeploy.
@@ -90,8 +90,8 @@ All agent calls use `Authorization: Bearer <api_key>`.
 
 | Method | Path | |
 |---|---|---|
-| `POST` | `/send` | `{to, cc?, bcc?, subject, text?, html?, attachments?: [{filename, type, content (base64)}]}` → `{messageId}` |
-| `GET` | `/messages?unread=true&since=<unix ms>` | List messages (newest first; with `since`, oldest first so you can page forward). Max 100. |
+| `POST` | `/send` | `{to, cc?, bcc?, subject, text?, html?, attachments?: [{filename, type, content (base64)}]}` → `{id, messageId}`. The sent message is saved, and `id` works with the `/messages/:id` routes. |
+| `GET` | `/messages?direction=in&unread=true&from=<text>&to=<text>&since=<unix ms>` | List messages (newest first; with `since`, oldest first so you can page forward). Max 100. `direction` is `in` (received, the default), `out` (sent) or `all`. `from` and `to` match part of an address, ignoring case (e.g. `@example.com`); `to` covers every recipient. |
 | `GET` | `/messages/:id` | Full message: text, html, attachment list |
 | `GET` | `/messages/:id/attachments/:index` | Download an attachment |
 | `POST` | `/messages/:id/read` | Mark read |

@@ -12,3 +12,9 @@ export interface WebhookJob {
   inbox: string;
   messageId: string;
 }
+
+// The Workers runtime has these, but TypeScript's lib doesn't declare them yet.
+declare global {
+  interface Uint8Array { toBase64(): string }
+  interface Uint8ArrayConstructor { fromBase64(base64: string): Uint8Array }
+}

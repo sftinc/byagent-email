@@ -1,6 +1,6 @@
 import PostalMime from "postal-mime";
 import type { Env } from "./env";
-import { rawKey } from "./mail";
+import { addresses, mailKey } from "./mail";
 
 export async function handleEmail(message: ForwardableEmailMessage, env: Env): Promise<void> {
   const inbox = message.to.toLowerCase();
@@ -14,11 +14,18 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env): P
   const email = await PostalMime.parse(raw);
   const id = crypto.randomUUID();
 
-  await env.MAIL.put(rawKey(inbox, id), raw);
+  await env.MAIL.put(mailKey(inbox, id, "in"), raw);
   await env.DB.prepare(
-    "INSERT INTO messages (id, inbox, from_addr, subject, received_at) VALUES (?, ?, ?, ?, ?)",
+    "INSERT INTO messages (id, inbox, from_addr, subject, received_at, to_addrs) VALUES (?, ?, ?, ?, ?, ?)",
   )
-    .bind(id, inbox, email.from?.address ?? message.from, email.subject ?? null, Date.now())
+    .bind(
+      id,
+      inbox,
+      email.from?.address ?? message.from,
+      email.subject ?? null,
+      Date.now(),
+      [...addresses(email.to), ...addresses(email.cc)].join(",").toLowerCase(),
+    )
     .run();
 
   const { results } = await env.DB.prepare("SELECT id FROM webhooks WHERE inbox = ?")

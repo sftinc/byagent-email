@@ -16,8 +16,10 @@ CREATE TABLE messages (
   inbox       TEXT NOT NULL,
   from_addr   TEXT NOT NULL,
   subject     TEXT,
-  received_at INTEGER NOT NULL,
-  read        INTEGER NOT NULL DEFAULT 0
+  received_at INTEGER NOT NULL,           -- or sent, for direction 'out'
+  read        INTEGER NOT NULL DEFAULT 0,
+  direction   TEXT NOT NULL DEFAULT 'in', -- 'in' (received) or 'out' (sent)
+  to_addrs    TEXT NOT NULL DEFAULT ''    -- every recipient (to, cc, bcc), comma-separated
 );
 
 CREATE UNIQUE INDEX inboxes_key_hash ON inboxes(key_hash);

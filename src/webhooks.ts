@@ -9,10 +9,10 @@ export async function deliverWebhook(job: WebhookJob, env: Env): Promise<boolean
   )
     .bind(job.webhookId)
     .first<{ url: string; secret: string }>();
-  const email = hook && (await loadMessage(env, job.inbox, job.messageId));
+  const email = hook && (await loadMessage(env, job.inbox, job.messageId, "in"));
   if (!hook || !email) return true;
 
-  const { html, cc, ...message } = summarize(job.messageId, email);
+  const { html, cc, bcc, ...message } = summarize(job.messageId, email);
   const body = JSON.stringify({ inbox: job.inbox, message });
   const timestamp = String(Date.now());
   const signature = await hmacSha256(hook.secret, `${timestamp}.${body}`);
