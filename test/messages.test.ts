@@ -17,28 +17,26 @@ describe("messages", () => {
     expect((await api("/messages", { key: "nope" })).status).toBe(401);
   });
 
-  it("lists messages with unread and since filters", async () => {
+  it("lists messages with an unread filter", async () => {
     const { key, id } = await setup();
-    const all = (await (await api("/messages", { key })).json()) as { messages: any[] };
-    expect(all.messages).toEqual([
-      {
-        id,
-        direction: "in",
-        from: "sender@example.org",
-        recipients: ["agent@email.example.com"],
-        subject: "First",
-        received_at: expect.any(Number),
-        read: false,
-      },
-    ]);
+    expect(await (await api("/messages", { key })).json()).toEqual({
+      messages: [
+        {
+          id,
+          direction: "in",
+          from: "sender@example.org",
+          recipients: ["agent@email.example.com"],
+          subject: "First",
+          read: false,
+          created_at: expect.any(Number),
+        },
+      ],
+      paging: { before: null, after: null },
+    });
 
     await api(`/messages/${id}/read`, { method: "POST", key });
     const unread = (await (await api("/messages?unread=true", { key })).json()) as { messages: any[] };
     expect(unread.messages).toEqual([]);
-
-    const future = Date.now() + 60_000;
-    const since = (await (await api(`/messages?since=${future}`, { key })).json()) as { messages: any[] };
-    expect(since.messages).toEqual([]);
   });
 
   it("filters by part of the sender address, ignoring case", async () => {
@@ -54,27 +52,26 @@ describe("messages", () => {
     expect(await from("nobody")).toEqual([]);
   });
 
-  it("orders since results oldest first, and the default newest first", async () => {
+  it("pages 20 at a time, newest first, with cursors for both directions", async () => {
     const inbox = await createInbox("agent");
-    await receive(eml({ subject: "A" }), inbox.address);
-    await receive(eml({ subject: "B" }), inbox.address);
-    await receive(eml({ subject: "C" }), inbox.address);
-    const rows = await env.DB.prepare("SELECT id, subject FROM messages").all<{ id: string; subject: string }>();
-    const byName = (subject: string) => rows.results.find((r) => r.subject === subject)!.id;
-    const [a, b, c] = [byName("A"), byName("B"), byName("C")];
+    for (let i = 0; i < 25; i++) await receive(eml({ subject: `M${i}` }), inbox.address);
+    const { results } = await env.DB.prepare("SELECT id FROM messages ORDER BY id DESC").all<{ id: string }>();
+    const n = results.map((r) => r.id); // newest first
+    const list = async (query: string) => {
+      const res = await api(`/messages${query}`, { key: inbox.api_key });
+      const body = (await res.json()) as { messages: { id: string }[]; paging: unknown };
+      return { ids: body.messages.map((m) => m.id), paging: body.paging };
+    };
 
-    const base = Date.now();
-    await env.DB.batch([
-      env.DB.prepare("UPDATE messages SET received_at = ? WHERE id = ?").bind(base, a),
-      env.DB.prepare("UPDATE messages SET received_at = ? WHERE id = ?").bind(base + 1000, b),
-      env.DB.prepare("UPDATE messages SET received_at = ? WHERE id = ?").bind(base + 2000, c),
-    ]);
-
-    const since = (await (await api(`/messages?since=${base}`, { key: inbox.api_key })).json()) as { messages: any[] };
-    expect(since.messages.map((m) => m.id)).toEqual([b, c]);
-
-    const all = (await (await api("/messages", { key: inbox.api_key })).json()) as { messages: any[] };
-    expect(all.messages.map((m) => m.id)).toEqual([c, b, a]);
+    expect(await list("")).toEqual({ ids: n.slice(0, 20), paging: { before: n[19], after: null } });
+    expect(await list(`?before=${n[19]}`)).toEqual({ ids: n.slice(20), paging: { before: null, after: n[20] } });
+    expect(await list(`?after=${n[20]}`)).toEqual({ ids: n.slice(0, 20), paging: { before: n[19], after: null } });
+    expect(await list(`?after=${n[24]}`)).toEqual({ ids: n.slice(4, 24), paging: { before: n[23], after: n[4] } });
+    // An empty page points back the way it came.
+    expect(await list(`?before=${n[24]}`)).toEqual({ ids: [], paging: { before: null, after: n[24] } });
+    // Paging follows the filters: there is no sent mail in either direction.
+    expect(await list(`?direction=out&before=${n[10]}`)).toEqual({ ids: [], paging: { before: null, after: null } });
+    expect((await api(`/messages?before=${n[0]}&after=${n[1]}`, { key: inbox.api_key })).status).toBe(400);
   });
 
   it("only shows an inbox its own messages", async () => {
@@ -113,14 +110,20 @@ describe("messages", () => {
     expect((await api(`/messages/${id}/attachments/5`, { key })).status).toBe(404);
   });
 
-  it("marks read and deletes", async () => {
+  it("marks read and soft-deletes, keeping the stored mail", async () => {
     const { key, id } = await setup();
     expect((await api(`/messages/${id}/read`, { method: "POST", key })).status).toBe(200);
     expect(((await (await api(`/messages/${id}`, { key })).json()) as any).read).toBe(true);
 
     expect((await api(`/messages/${id}`, { method: "DELETE", key })).status).toBe(200);
     expect((await api(`/messages/${id}`, { key })).status).toBe(404);
-    expect((await env.MAIL.list()).objects).toHaveLength(0);
+    expect((await api(`/messages/${id}/attachments/0`, { key })).status).toBe(404);
     expect((await api(`/messages/${id}/read`, { method: "POST", key })).status).toBe(404);
+    expect((await api(`/messages/${id}`, { method: "DELETE", key })).status).toBe(404);
+    const list = (await (await api("/messages", { key })).json()) as { messages: unknown[] };
+    expect(list.messages).toEqual([]);
+    const row = await env.DB.prepare("SELECT deleted_at FROM messages WHERE id = ?").bind(id).first<{ deleted_at: number }>();
+    expect(row!.deleted_at).toEqual(expect.any(Number));
+    expect((await env.MAIL.list()).objects).toHaveLength(1);
   });
 });

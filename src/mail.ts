@@ -39,9 +39,9 @@ export async function saveSent(env: Env, inboxId: string, address: string, messa
   };
   await env.MAIL.put(mailKey(inboxId, id, "out"), JSON.stringify(email));
   await env.DB.prepare(
-    "INSERT INTO messages (id, inbox_id, from_addr, subject, received_at, read, direction, recipients) VALUES (?, ?, ?, ?, ?, 1, 'out', ?)",
+    "INSERT INTO messages (id, inbox_id, direction, from_addr, recipients, subject, read, created_at) VALUES (?, ?, 'out', ?, ?, ?, 1, ?)",
   )
-    .bind(id, inboxId, address, message.subject, Date.now(), [...to, ...cc, ...bcc].join(",").toLowerCase())
+    .bind(id, inboxId, address, [...to, ...cc, ...bcc].join(",").toLowerCase(), message.subject, Date.now())
     .run();
   return id;
 }
@@ -68,16 +68,4 @@ export function summarize(id: string, email: Email) {
       size: typeof a.content === "string" ? a.content.length : a.content.byteLength,
     })),
   };
-}
-
-// Deletes every message matching `where` (a fixed SQL fragment), from R2 and D1, in batches.
-export async function purgeMessages(env: Env, where: string, ...params: unknown[]): Promise<void> {
-  while (true) {
-    const { results } = await env.DB.prepare(`SELECT id, inbox_id, direction FROM messages WHERE ${where} LIMIT 100`)
-      .bind(...params)
-      .all<{ id: string; inbox_id: string; direction: Direction }>();
-    if (results.length === 0) return;
-    await env.MAIL.delete(results.map((m) => mailKey(m.inbox_id, m.id, m.direction)));
-    await env.DB.batch(results.map((m) => env.DB.prepare("DELETE FROM messages WHERE id = ?").bind(m.id)));
-  }
 }

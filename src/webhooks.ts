@@ -4,10 +4,14 @@ import { loadMessage, summarize } from "./mail";
 
 // Returns true when the job is finished (delivered, or nothing left to deliver).
 export async function deliverWebhook(job: WebhookJob, env: Env): Promise<boolean> {
+  // Skips the job when the webhook or the message has been deleted since it was queued.
   const hook = await env.DB.prepare(
-    "SELECT w.url, w.secret, w.inbox_id, i.address FROM webhooks w JOIN inboxes i ON i.id = w.inbox_id WHERE w.id = ?",
+    `SELECT w.url, w.secret, w.inbox_id, i.address FROM webhooks w
+     JOIN inboxes i ON i.id = w.inbox_id
+     JOIN messages m ON m.id = ? AND m.inbox_id = w.inbox_id AND m.deleted_at IS NULL
+     WHERE w.id = ? AND w.deleted_at IS NULL`,
   )
-    .bind(job.webhookId)
+    .bind(job.messageId, job.webhookId)
     .first<{ url: string; secret: string; inbox_id: string; address: string }>();
   const email = hook && (await loadMessage(env, hook.inbox_id, job.messageId, "in"));
   if (!hook || !email) return true;

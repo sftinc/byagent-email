@@ -37,7 +37,7 @@ describe("sent mail", () => {
         from: inbox.address,
         recipients: ["a@x.com", "b@x.com", "c@x.com"],
         subject: "Report",
-        received_at: expect.any(Number),
+        created_at: expect.any(Number),
         read: true,
       },
     ]);
@@ -78,12 +78,12 @@ describe("sent mail", () => {
     expect((await api("/messages?direction=sent", { key: inbox.api_key })).status).toBe(400);
   });
 
-  it("deletes a sent message from D1 and R2", async () => {
+  it("soft-deletes a sent message, keeping its file", async () => {
     const inbox = await createInbox("agent");
     const { id } = await sendOne(inbox.api_key);
     expect((await api(`/messages/${id}`, { method: "DELETE", key: inbox.api_key })).status).toBe(200);
     expect(await list(inbox.api_key, "?direction=all")).toEqual([]);
-    expect((await env.MAIL.list()).objects).toHaveLength(0);
+    expect((await env.MAIL.list()).objects).toHaveLength(1);
   });
 
   it("stores nothing when the send fails", async () => {

@@ -58,7 +58,7 @@ Enabling Email Routing replaces the domain's MX records, so use a domain (or sub
 
 | Name | Where | Default | |
 |---|---|---|---|
-| `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `0` | Mail (received and sent) older than this many days is deleted daily. `0` keeps mail forever. |
+| `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `0` | Mail (received and sent) older than this many days is deleted daily (a soft delete, see below). `0` never deletes it. |
 | `ADMIN_KEY` | Worker secret, plus `.dev.vars` locally | set by setup | Admin API key |
 
 To add or change the API hostname later, set `routes` in `wrangler.jsonc` to `[{ "pattern": "api.example.com", "custom_domain": true }]` and redeploy.
@@ -73,13 +73,15 @@ curl -X POST $URL/admin/inboxes -H "Authorization: Bearer $ADMIN_KEY" -d '{"addr
 # → {"address":"claude@example.com","api_key":"…"}
 ```
 
+Deletes are soft everywhere: a deleted inbox, webhook or message disappears from the API, but its database row and stored mail are kept.
+
 Inboxes can be on any domain you've set up for this Worker (see Setup). Creating an inbox checks that the domain's MX records point at Cloudflare Email Routing, which catches typos and domains that aren't set up yet. It can't confirm that the catch-all rule targets this Worker, so check that step in the dashboard.
 
 | Method | Path | |
 |---|---|---|
 | `POST` | `/admin/inboxes` | `{address}` → `{address, api_key}` |
 | `GET` | `/admin/inboxes` | List inboxes |
-| `DELETE` | `/admin/inboxes/:address` | Delete the inbox and all its mail |
+| `DELETE` | `/admin/inboxes/:address` | Delete the inbox, its webhooks and its mail. The address can then be used for a new inbox. |
 | `POST` | `/admin/inboxes/:address/rotate-key` | Returns a new `api_key` |
 
 ## Agent API
@@ -89,7 +91,7 @@ All agent calls use `Authorization: Bearer <api_key>`.
 | Method | Path | |
 |---|---|---|
 | `POST` | `/send` | `{to, cc?, bcc?, subject, text?, html?, attachments?: [{filename, type, content (base64)}]}` → `{id, messageId}`. The sent message is saved, and `id` works with the `/messages/:id` routes. |
-| `GET` | `/messages?direction=in&unread=true&from=<text>&to=<text>&since=<unix ms>` | List messages (newest first; with `since`, oldest first so you can page forward). Max 100. `direction` is `in` (received, the default), `out` (sent) or `all`. Each message lists its `recipients` (to, cc and, for sent mail, bcc). `from` matches part of the sender address and `to` part of any recipient, ignoring case (e.g. `@example.com`). |
+| `GET` | `/messages?direction=in&unread=true&from=<text>&to=<text>&before=<id>&after=<id>` | List messages, 20 per page, newest first → `{messages, paging: {before, after}}`. For older mail pass `paging.before` as `before`, for newer mail `paging.after` as `after`; `null` means there is no more that way. `direction` is `in` (received, the default), `out` (sent) or `all`. Each message lists its `recipients` (to, cc and, for sent mail, bcc). `from` matches part of the sender address and `to` part of any recipient, ignoring case (e.g. `@example.com`). |
 | `GET` | `/messages/:id` | Full message: `from`, `to`, `cc`, `bcc` (sent mail), `subject`, `date`, `text`, `html`, attachment list, `read` |
 | `GET` | `/messages/:id/attachments/:index` | Download an attachment |
 | `POST` | `/messages/:id/read` | Mark read |

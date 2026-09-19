@@ -44,26 +44,57 @@ describe("admin", () => {
     expect(await res.json()).toEqual({ error: "nomx.example.org has no Cloudflare Email Routing MX records" });
   });
 
-  it("rotates a key so the old one stops working", async () => {
+  it("rotates a key so the old one stops working, and sets updated_at", async () => {
     const inbox = await createInbox("agent");
+    await env.DB.prepare("UPDATE inboxes SET created_at = 1, updated_at = 1").run();
     const res = await api(`/admin/inboxes/${inbox.address}/rotate-key`, { method: "POST", key: ADMIN_KEY });
     const { api_key } = (await res.json()) as { api_key: string };
     expect((await api("/messages", { key: inbox.api_key })).status).toBe(401);
     expect((await api("/messages", { key: api_key })).status).toBe(200);
+    const row = await env.DB.prepare("SELECT created_at, updated_at FROM inboxes").first<{ created_at: number; updated_at: number }>();
+    expect(row!.created_at).toBe(1);
+    expect(row!.updated_at).toBeGreaterThan(1);
   });
 
-  it("deletes an inbox with its webhooks, messages and stored mail", async () => {
+  it("rejects rows that point at a missing inbox", async () => {
+    const insert = env.DB.prepare(
+      "INSERT INTO webhooks (id, inbox_id, url, secret, created_at) VALUES ('w1', 'missing', 'https://a.example', 's', 0)",
+    );
+    await expect(insert.run()).rejects.toThrow(/FOREIGN KEY/);
+  });
+
+  it("soft-deletes an inbox with its webhooks and messages, keeping stored mail", async () => {
     const inbox = await createInbox("agent");
-    await env.DB.prepare("INSERT INTO webhooks (id, inbox_id, url, secret) SELECT 'w1', id, 'https://example.com/hook', 's' FROM inboxes").run();
+    await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://example.com/hook" } });
     await receive(eml(), inbox.address, { WEBHOOKS: { sendBatch: async () => {} } as any });
 
     const res = await api(`/admin/inboxes/${inbox.address}`, { method: "DELETE", key: ADMIN_KEY });
     expect(res.status).toBe(200);
     for (const table of ["inboxes", "webhooks", "messages"]) {
-      const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>();
-      expect(row?.n).toBe(0);
+      const row = await env.DB.prepare(`SELECT COUNT(*) AS n, COUNT(deleted_at) AS deleted FROM ${table}`).first();
+      expect(row).toEqual({ n: 1, deleted: 1 });
     }
-    expect((await env.MAIL.list()).objects).toHaveLength(0);
+    expect((await env.MAIL.list()).objects).toHaveLength(1);
+
+    const list = (await (await api("/admin/inboxes", { key: ADMIN_KEY })).json()) as { inboxes: unknown[] };
+    expect(list.inboxes).toEqual([]);
+    expect((await api("/messages", { key: inbox.api_key })).status).toBe(401);
+    expect((await receive(eml(), inbox.address)).setReject).toHaveBeenCalledWith("Unknown recipient");
+    expect((await api(`/admin/inboxes/${inbox.address}/rotate-key`, { method: "POST", key: ADMIN_KEY })).status).toBe(404);
     expect((await api(`/admin/inboxes/${inbox.address}`, { method: "DELETE", key: ADMIN_KEY })).status).toBe(404);
+  });
+
+  it("reuses a deleted address as a new, empty inbox", async () => {
+    const old = await createInbox("agent");
+    await receive(eml(), old.address);
+    await api(`/admin/inboxes/${old.address}`, { method: "DELETE", key: ADMIN_KEY });
+
+    const res = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { address: old.address } });
+    expect(res.status).toBe(201);
+    const { api_key } = (await res.json()) as { api_key: string };
+    const list = (await (await api("/messages", { key: api_key })).json()) as { messages: unknown[] };
+    expect(list.messages).toEqual([]);
+    const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM inboxes WHERE address = ?").bind(old.address).first();
+    expect(row).toEqual({ n: 2 });
   });
 });

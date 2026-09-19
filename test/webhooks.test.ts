@@ -35,6 +35,11 @@ describe("webhook endpoints", () => {
     const res = await api("/webhooks", { method: "POST", key, body: { url: "https://eleven.example/hook" } });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "At most 10 webhooks per inbox" });
+
+    // Deleted webhooks don't count toward the cap.
+    const { webhooks } = (await (await api("/webhooks", { key })).json()) as { webhooks: { id: string }[] };
+    await api(`/webhooks/${webhooks[0].id}`, { method: "DELETE", key });
+    expect((await api("/webhooks", { method: "POST", key, body: { url: "https://eleven.example/hook" } })).status).toBe(201);
   });
 });
 
@@ -89,9 +94,10 @@ describe("webhook delivery", () => {
     expect(result.retryMessages).toMatchObject([{ msgId: "job-1" }]);
   });
 
-  it("acks and skips when the webhook was removed", async () => {
-    const { batch } = await setup();
-    await env.DB.prepare("DELETE FROM webhooks").run();
+  it.each(["webhook", "message"])("acks and skips when the %s was deleted", async (what) => {
+    const { inbox, hook, messageId, batch } = await setup();
+    const path = what === "webhook" ? `/webhooks/${hook.id}` : `/messages/${messageId}`;
+    expect((await api(path, { method: "DELETE", key: inbox.api_key })).status).toBe(200);
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const ctx = createExecutionContext();

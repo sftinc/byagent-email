@@ -26,8 +26,8 @@ describe("incoming mail", () => {
   it("queues one job per webhook", async () => {
     const inbox = await createInbox("agent");
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO webhooks (id, inbox_id, url, secret) SELECT 'w1', id, 'https://a.example/hook', 's' FROM inboxes"),
-      env.DB.prepare("INSERT INTO webhooks (id, inbox_id, url, secret) SELECT 'w2', id, 'https://b.example/hook', 's' FROM inboxes"),
+      env.DB.prepare("INSERT INTO webhooks (id, inbox_id, url, secret, created_at) SELECT 'w1', id, 'https://a.example/hook', 's', 0 FROM inboxes"),
+      env.DB.prepare("INSERT INTO webhooks (id, inbox_id, url, secret, created_at) SELECT 'w2', id, 'https://b.example/hook', 's', 0 FROM inboxes"),
     ]);
     const sendBatch = vi.fn();
     await receive(eml(), inbox.address, { WEBHOOKS: { sendBatch } as any });
