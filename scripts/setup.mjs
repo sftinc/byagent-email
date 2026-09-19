@@ -22,7 +22,7 @@ run("npx wrangler whoami"); // fails early when not logged in
 let domain = process.argv[2];
 if (!domain) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  domain = (await rl.question("Email domain (e.g. email.example.com): ")).trim().toLowerCase();
+  domain = (await rl.question("Email domain (e.g. example.com): ")).trim().toLowerCase();
   rl.close();
 }
 if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) throw new Error(`Not a valid domain: ${domain}`);

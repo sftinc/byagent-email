@@ -1,7 +1,7 @@
 # byagent-email
 
 A very simple email service for AI agents, built on Cloudflare. Each agent gets its own
-inbox, like `claude@email.example.com`, and an API key. It can send mail with attachments,
+inbox, like `claude@example.com`, and an API key. It can send mail with attachments,
 poll for received mail, and register webhooks that fire when mail arrives.
 
 It's one Cloudflare Worker. Mail comes in through Email Routing and goes out through
@@ -9,7 +9,7 @@ Email Service. D1, R2 and Queues store the rest.
 
 ## Requirements
 
-- A domain on Cloudflare DNS. A subdomain such as `email.example.com` works well.
+- A domain on Cloudflare DNS. A subdomain (e.g. `mail.example.com`) works too.
 - The Workers Paid plan, which Email Service sending requires.
 - Node.js 20+ and `npx wrangler login`.
 
@@ -17,7 +17,7 @@ Email Service. D1, R2 and Queues store the rest.
 
 ```bash
 npm install
-npm run setup -- email.example.com
+npm run setup -- example.com
 ```
 
 The setup command:
@@ -29,7 +29,7 @@ The setup command:
 Then, in the Cloudflare dashboard:
 
 1. **Email > Email Sending > Onboard Domain**, and choose your email domain. This adds the MX, SPF, DKIM and DMARC records.
-2. **Email > Email Routing**: if your email domain is a subdomain, open the **apex domain > Settings > Subdomains** and add it. This adds the MX records it needs to receive mail.
+2. **Email > Email Routing**: if you use a subdomain, first add it under **apex domain > Settings > Subdomains**.
 3. In Email Routing's rules for your email domain, set the **catch-all** rule to **Send to a Worker > byagent-email**.
 
 ### Configuration
@@ -49,7 +49,7 @@ All admin calls use `Authorization: Bearer <ADMIN_KEY>`.
 ```bash
 # Create an inbox. The api_key is shown only once.
 curl -X POST $URL/admin/inboxes -H "Authorization: Bearer $ADMIN_KEY" -d '{"name":"claude"}'
-# → {"address":"claude@email.example.com","api_key":"…","webhook_secret":"…"}
+# → {"address":"claude@example.com","api_key":"…","webhook_secret":"…"}
 ```
 
 | Method | Path | |
@@ -80,14 +80,14 @@ Send limits come from Cloudflare: 5 MiB per message, 32 attachments, 50 recipien
 When mail arrives, each of the inbox's webhooks gets a `POST`:
 
 ```json
-{ "inbox": "claude@email.example.com",
+{ "inbox": "claude@example.com",
   "message": { "id": "…", "from": "…", "to": ["…"], "subject": "…", "date": "…", "text": "…",
                "attachments": [{ "index": 0, "filename": "a.pdf", "type": "application/pdf", "size": 1234 }] } }
 ```
 
 To verify a webhook, compute `HMAC-SHA256(webhook_secret, X-Timestamp + "." + rawBody)` as
 hex and compare it with the `X-Signature` header (`sha256=<hex>`). Reject old timestamps.
-A non-2xx response is retried up to 5 times with backoff. You can always fall back to polling.
+A non-2xx response is retried with backoff, up to 5 attempts in total. You can always fall back to polling.
 
 ## Development
 
