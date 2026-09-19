@@ -24,7 +24,7 @@ The setup command:
 - creates the D1 database, R2 bucket and queue,
 - writes `wrangler.jsonc` (gitignored),
 - applies the database schema and deploys the Worker,
-- prints a new `ADMIN_KEY`.
+- generates a new `ADMIN_KEY` and saves it to `.dev.vars` (gitignored), which `wrangler dev` also uses. Load it with `source .dev.vars`.
 
 Then, in the Cloudflare dashboard:
 
@@ -40,7 +40,7 @@ Enabling Email Routing replaces the domain's MX records, so use a domain (or sub
 |---|---|---|---|
 | `DOMAIN` | `vars` in `wrangler.jsonc` | set by setup | Email domain for inboxes |
 | `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `7` | Received mail older than this is deleted daily |
-| `ADMIN_KEY` | `wrangler secret put ADMIN_KEY` | set by setup | Admin API key |
+| `ADMIN_KEY` | Worker secret, plus `.dev.vars` locally | set by setup | Admin API key |
 
 The API is served on the Worker's `workers.dev` URL. Add a custom domain in the dashboard if you want one.
 

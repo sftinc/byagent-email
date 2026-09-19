@@ -1,5 +1,6 @@
 // One-time setup: creates the Cloudflare resources, writes wrangler.jsonc,
-// deploys the Worker and sets ADMIN_KEY. Safe to re-run (it issues a new ADMIN_KEY).
+// deploys the Worker, sets ADMIN_KEY and saves it to .dev.vars (gitignored).
+// Safe to re-run (it issues a new ADMIN_KEY).
 import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -49,10 +50,11 @@ runVisible("npx wrangler deploy");
 const adminKey = randomBytes(32).toString("hex");
 run("npx wrangler secret put ADMIN_KEY", { input: adminKey });
 
-console.log(`
-Done. Your ADMIN_KEY (shown only once, store it somewhere safe):
+const env = existsSync(".dev.vars") ? readFileSync(".dev.vars", "utf8").split("\n").filter((l) => l && !l.startsWith("ADMIN_KEY=")) : [];
+writeFileSync(".dev.vars", [...env, `ADMIN_KEY=${adminKey}`, ""].join("\n"));
 
-  ${adminKey}
+console.log(`
+Done. ADMIN_KEY saved to .dev.vars (gitignored). Use it with: source .dev.vars
 
 Steps left, in the Cloudflare dashboard:
   1. Email > Email Sending > Onboard Domain > ${domain}
