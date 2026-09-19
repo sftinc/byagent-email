@@ -18,7 +18,7 @@ describe("cleanup", () => {
   it("deletes messages older than RETENTION_DAYS", async () => {
     await addMessage("old", Date.now() - 8 * DAY);
     await addMessage("new", Date.now() - 1 * DAY);
-    await handleScheduled(env);
+    await handleScheduled({ ...env, RETENTION_DAYS: "7" });
 
     const { results } = await env.DB.prepare("SELECT id FROM messages").all<{ id: string }>();
     expect(results.map((r) => r.id)).toEqual(["new"]);

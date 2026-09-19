@@ -17,12 +17,12 @@ Email Service. D1, R2 and Queues store the rest.
 
 ```bash
 npm install
-npm run setup -- example.com
+npm run setup -- --domain example.com --api api.example.com
 ```
 
 The setup command:
 - creates the D1 database, R2 bucket and queue,
-- writes `wrangler.jsonc` (gitignored),
+- writes `wrangler.jsonc` (gitignored). `--api` is optional: it serves the API on that hostname as a custom domain. Leave it out to use the Worker's `workers.dev` URL,
 - applies the database schema and deploys the Worker,
 - generates a new `ADMIN_KEY` and saves it to `.dev.vars` (gitignored), which `wrangler dev` also uses. Load it with `source .dev.vars`.
 
@@ -39,10 +39,10 @@ Enabling Email Routing replaces the domain's MX records, so use a domain (or sub
 | Name | Where | Default | |
 |---|---|---|---|
 | `DOMAIN` | `vars` in `wrangler.jsonc` | set by setup | Email domain for inboxes |
-| `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `7` | Received mail older than this is deleted daily |
+| `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `0` | Received mail older than this many days is deleted daily. `0` keeps mail forever. |
 | `ADMIN_KEY` | Worker secret, plus `.dev.vars` locally | set by setup | Admin API key |
 
-The API is served on the Worker's `workers.dev` URL. Add a custom domain in the dashboard if you want one.
+To add or change the API hostname later, set `routes` in `wrangler.jsonc` to `[{ "pattern": "api.example.com", "custom_domain": true }]` and redeploy.
 
 ## Admin API
 
