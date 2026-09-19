@@ -14,7 +14,7 @@ function isStringList(value: unknown[]): value is string[] {
 }
 
 // Validates an agent's POST /send body and turns it into an Email Service message from `from`.
-export function buildEmail(body: any, from: string): Result {
+export function buildEmail(body: any, from: string | EmailAddress): Result {
   if (!body || typeof body !== "object") return { ok: false, status: 400, error: "Body must be a JSON object" };
 
   const to = list(body.to);

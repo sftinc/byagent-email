@@ -24,7 +24,7 @@ describe("messages", () => {
         {
           id,
           direction: "in",
-          from: "sender@example.org",
+          from: { name: "Sender", address: "sender@example.org" },
           recipients: ["agent@email.example.com"],
           subject: "First",
           read: false,
@@ -45,7 +45,7 @@ describe("messages", () => {
     await receive(eml({ from: "alice@other.com" }), inbox.address);
     const from = async (q: string) =>
       ((await (await api(`/messages?from=${encodeURIComponent(q)}`, { key: inbox.api_key })).json()) as { messages: any[] })
-        .messages.map((m) => m.from);
+        .messages.map((m) => m.from.address);
 
     expect(await from("BOB@example.org")).toEqual(["bob@example.org"]);
     expect(await from("@other.com")).toEqual(["alice@other.com"]);
@@ -100,8 +100,13 @@ describe("messages", () => {
     const res = await api(`/messages/${id}`, { key });
     expect(await res.json()).toEqual({
       id,
-      from: "sender@example.org",
-      to: ["agent@email.example.com"],
+      direction: "in",
+      message_id: null,
+      in_reply_to: null,
+      references: [],
+      from: { name: "Sender", address: "sender@example.org" },
+      reply_to: [],
+      to: [{ name: "", address: "agent@email.example.com" }],
       cc: [],
       bcc: [],
       subject: "First",
@@ -109,7 +114,24 @@ describe("messages", () => {
       text: "Hi there\n",
       html: null,
       attachments: [{ index: 0, filename: "notes.txt", type: "text/plain", size: 10 }],
+      headers: expect.arrayContaining([{ key: "subject", value: "First" }]),
       read: false,
+      created_at: expect.any(Number),
+    });
+  });
+
+  it("returns the headers needed to reply in a thread", async () => {
+    const inbox = await createInbox("agent");
+    const headers =
+      "Message-ID: <b@x.com>\r\nIn-Reply-To: <a@x.com>\r\nReferences: <root@x.com> <a@x.com>\r\nReply-To: Team <team@x.com>\r\n";
+    await receive(eml({ subject: "Re: Plan", headers }), inbox.address);
+    const { messages } = (await (await api("/messages", { key: inbox.api_key })).json()) as { messages: { id: string }[] };
+    const full = await (await api(`/messages/${messages[0].id}`, { key: inbox.api_key })).json();
+    expect(full).toMatchObject({
+      message_id: "<b@x.com>",
+      in_reply_to: "<a@x.com>",
+      references: ["<root@x.com>", "<a@x.com>"],
+      reply_to: [{ name: "Team", address: "team@x.com" }],
     });
   });
 

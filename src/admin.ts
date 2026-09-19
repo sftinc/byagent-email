@@ -15,6 +15,18 @@ async function hasCloudflareMx(domain: string): Promise<boolean> {
   return Answer.some((a) => a.data.toLowerCase().endsWith(".mx.cloudflare.net."));
 }
 
+// An inbox's optional display name. null or "" means no name. Line breaks and other control
+// characters are refused, so a name can't add headers to outgoing mail. undefined = invalid.
+function parseName(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const name = value.trim();
+  if (name.length > 100 || /[\x00-\x1f\x7f]/.test(name)) return undefined;
+  return name || null;
+}
+
+const BAD_NAME = "`name` must be text, at most 100 characters, with no line breaks";
+
 admin.use("*", async (c, next) => {
   const token = c.req.header("Authorization")?.replace(/^Bearer /, "") ?? "";
   if (!c.env.ADMIN_KEY || (await sha256(token)) !== (await sha256(c.env.ADMIN_KEY))) {
@@ -24,8 +36,10 @@ admin.use("*", async (c, next) => {
 });
 
 admin.post("/inboxes", async (c) => {
-  const body = await c.req.json<{ address?: unknown }>().catch(() => ({}) as { address?: unknown });
+  const body = await c.req.json<{ address?: unknown; name?: unknown }>().catch(() => ({}) as { address?: unknown; name?: unknown });
   const address = typeof body.address === "string" ? body.address.toLowerCase() : "";
+  const name = parseName(body.name);
+  if (name === undefined) return c.json({ error: BAD_NAME }, 400);
   // Any domain works, as long as it is set up for this Worker in Cloudflare (see README).
   if (!/^[a-z0-9._-]{1,64}@[a-z0-9.-]+\.[a-z]{2,}$/.test(address)) {
     return c.json({ error: "`address` must look like name@example.com (name: 1-64 of a-z 0-9 . _ -)" }, 400);
@@ -39,25 +53,38 @@ admin.post("/inboxes", async (c) => {
     return c.json({ error: `${domain} has no Cloudflare Email Routing MX records` }, 400);
   }
 
+  const id = uuidv7();
   const apiKey = randomToken();
   const now = Date.now();
-  await c.env.DB.prepare("INSERT INTO inboxes (id, address, key_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
-    .bind(uuidv7(), address, await sha256(apiKey), now, now)
+  await c.env.DB.prepare("INSERT INTO inboxes (id, address, name, key_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(id, address, name, await sha256(apiKey), now, now)
     .run();
-  return c.json({ address, api_key: apiKey }, 201);
+  return c.json({ id, address, name, api_key: apiKey }, 201);
 });
 
 admin.get("/inboxes", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT address, created_at FROM inboxes WHERE deleted_at IS NULL ORDER BY address",
+    "SELECT id, address, name, created_at FROM inboxes WHERE deleted_at IS NULL ORDER BY address",
   ).all();
   return c.json({ inboxes: results });
 });
 
-admin.delete("/inboxes/:address", async (c) => {
-  const address = c.req.param("address").toLowerCase();
-  const inbox = await c.env.DB.prepare("SELECT id FROM inboxes WHERE address = ? AND deleted_at IS NULL")
-    .bind(address)
+admin.patch("/inboxes/:id", async (c) => {
+  const body = await c.req.json<{ name?: unknown }>().catch(() => ({}) as { name?: unknown });
+  const name = parseName(body.name);
+  if (name === undefined) return c.json({ error: BAD_NAME }, 400);
+  const inbox = await c.env.DB.prepare(
+    "UPDATE inboxes SET name = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL RETURNING id, address, name",
+  )
+    .bind(name, Date.now(), c.req.param("id"))
+    .first();
+  if (!inbox) return c.json({ error: "Inbox not found" }, 404);
+  return c.json(inbox);
+});
+
+admin.delete("/inboxes/:id", async (c) => {
+  const inbox = await c.env.DB.prepare("SELECT id FROM inboxes WHERE id = ? AND deleted_at IS NULL")
+    .bind(c.req.param("id"))
     .first<{ id: string }>();
   if (!inbox) return c.json({ error: "Inbox not found" }, 404);
 
@@ -73,13 +100,12 @@ admin.delete("/inboxes/:address", async (c) => {
   return c.json({ ok: true });
 });
 
-admin.post("/inboxes/:address/rotate-key", async (c) => {
-  const address = c.req.param("address").toLowerCase();
+admin.post("/inboxes/:id/rotate-key", async (c) => {
   const apiKey = randomToken();
   const { meta } = await c.env.DB.prepare(
-    "UPDATE inboxes SET key_hash = ?, updated_at = ? WHERE address = ? AND deleted_at IS NULL",
+    "UPDATE inboxes SET key_hash = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL",
   )
-    .bind(await sha256(apiKey), Date.now(), address)
+    .bind(await sha256(apiKey), Date.now(), c.req.param("id"))
     .run();
   if (meta.changes === 0) return c.json({ error: "Inbox not found" }, 404);
   return c.json({ api_key: apiKey });

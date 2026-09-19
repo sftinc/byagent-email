@@ -34,7 +34,7 @@ describe("sent mail", () => {
       {
         id: sent.id,
         direction: "out",
-        from: inbox.address,
+        from: { name: "", address: inbox.address },
         recipients: ["a@x.com", "b@x.com", "c@x.com"],
         subject: "Report",
         created_at: expect.any(Number),
@@ -50,16 +50,23 @@ describe("sent mail", () => {
     const res = await api(`/messages/${id}`, { key: inbox.api_key });
     expect(await res.json()).toEqual({
       id,
-      from: inbox.address,
-      to: ["a@x.com"],
-      cc: ["b@x.com"],
-      bcc: ["c@x.com"],
+      direction: "out",
+      message_id: "cf-123",
+      in_reply_to: null,
+      references: [],
+      from: { name: "", address: inbox.address },
+      reply_to: [],
+      to: [{ name: "", address: "a@x.com" }],
+      cc: [{ name: "", address: "b@x.com" }],
+      bcc: [{ name: "", address: "c@x.com" }],
       subject: "Report",
       date: expect.any(String),
       text: "See attached",
       html: null,
       attachments: [{ index: 0, filename: "a.txt", type: "text/plain", size: 2 }],
+      headers: [],
       read: true,
+      created_at: expect.any(Number),
     });
 
     const file = await api(`/messages/${id}/attachments/0`, { key: inbox.api_key });

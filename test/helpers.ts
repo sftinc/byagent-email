@@ -30,9 +30,10 @@ export function api(
   );
 }
 
-export async function createInbox(name = "agent") {
-  const res = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { address: `${name}@email.example.com` } });
-  return (await res.json()) as { address: string; api_key: string };
+// Creates <local>@email.example.com, with an optional display name.
+export async function createInbox(local = "agent", name?: string) {
+  const res = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { address: `${local}@email.example.com`, name } });
+  return (await res.json()) as { id: string; address: string; name: string | null; api_key: string };
 }
 
 export function eml({
@@ -40,15 +41,17 @@ export function eml({
   to = "agent@email.example.com",
   subject = "Hello",
   text = "Hi there",
+  headers = "",
   attachment,
 }: {
   from?: string;
   to?: string;
   subject?: string;
   text?: string;
+  headers?: string; // extra header lines, each ending in \r\n
   attachment?: { filename: string; content: string };
 } = {}): string {
-  const head = `From: Sender <${from}>\r\nTo: ${to}\r\nSubject: ${subject}\r\nDate: Sat, 19 Sep 2026 10:00:00 +0000\r\nMIME-Version: 1.0\r\n`;
+  const head = `From: Sender <${from}>\r\nTo: ${to}\r\nSubject: ${subject}\r\nDate: Sat, 19 Sep 2026 10:00:00 +0000\r\n${headers}MIME-Version: 1.0\r\n`;
   if (!attachment) return `${head}Content-Type: text/plain; charset=utf-8\r\n\r\n${text}\r\n`;
   return (
     `${head}Content-Type: multipart/mixed; boundary=BOUNDARY\r\n\r\n` +

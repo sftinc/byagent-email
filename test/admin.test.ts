@@ -10,16 +10,53 @@ describe("admin", () => {
     expect((await api("/admin/inboxes", { key: "wrong" })).status).toBe(401);
   });
 
-  it("creates an inbox and returns its key once", async () => {
-    const res = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { address: "Claude@Email.Example.com" } });
+  it("creates an inbox, with or without a name, and returns its key once", async () => {
+    const res = await api("/admin/inboxes", {
+      method: "POST",
+      key: ADMIN_KEY,
+      body: { address: "Claude@Email.Example.com", name: " Claude " },
+    });
     expect(res.status).toBe(201);
-    expect(await res.json()).toEqual({ address: "claude@email.example.com", api_key: expect.stringMatching(/^[0-9a-f]{64}$/) });
-    const row = await env.DB.prepare("SELECT id FROM inboxes").first<{ id: string }>();
-    expect(row!.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7/);
+    const created = (await res.json()) as { id: string };
+    expect(created).toEqual({
+      id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-7/),
+      address: "claude@email.example.com",
+      name: "Claude",
+      api_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    const unnamed = await createInbox("bot");
+    expect(unnamed.name).toBeNull();
 
-    const list = await api("/admin/inboxes", { key: ADMIN_KEY });
-    const { inboxes } = (await list.json()) as { inboxes: { address: string }[] };
-    expect(inboxes.map((i) => i.address)).toEqual(["claude@email.example.com"]);
+    const list = (await (await api("/admin/inboxes", { key: ADMIN_KEY })).json()) as { inboxes: unknown[] };
+    expect(list.inboxes).toEqual([
+      { id: unnamed.id, address: "bot@email.example.com", name: null, created_at: expect.any(Number) },
+      { id: created.id, address: "claude@email.example.com", name: "Claude", created_at: expect.any(Number) },
+    ]);
+  });
+
+  it("renames an inbox by id, and sets updated_at", async () => {
+    const inbox = await createInbox("agent");
+    await env.DB.prepare("UPDATE inboxes SET updated_at = 1").run();
+    const rename = (name: unknown, id = inbox.id) => api(`/admin/inboxes/${id}`, { method: "PATCH", key: ADMIN_KEY, body: { name } });
+
+    const res = await rename("Support Bot");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: inbox.id, address: inbox.address, name: "Support Bot" });
+    const row = await env.DB.prepare("SELECT name, updated_at FROM inboxes").first<{ name: string; updated_at: number }>();
+    expect(row!.name).toBe("Support Bot");
+    expect(row!.updated_at).toBeGreaterThan(1);
+
+    expect(await (await rename(null)).json()).toMatchObject({ name: null });
+    expect(await (await rename("")).json()).toMatchObject({ name: null });
+    expect((await rename("x", "no-such-id")).status).toBe(404);
+    expect((await rename(inbox.address, inbox.address)).status).toBe(404);
+  });
+
+  it("rejects a name that is too long, not a string, or has line breaks", async () => {
+    for (const name of ["x".repeat(101), "Bot\r\nBcc: spy@x.com", 5]) {
+      const res = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { address: "a@email.example.com", name } });
+      expect(res.status).toBe(400);
+    }
   });
 
   it("validates the address and refuses duplicates", async () => {
@@ -47,7 +84,7 @@ describe("admin", () => {
   it("rotates a key so the old one stops working, and sets updated_at", async () => {
     const inbox = await createInbox("agent");
     await env.DB.prepare("UPDATE inboxes SET created_at = 1, updated_at = 1").run();
-    const res = await api(`/admin/inboxes/${inbox.address}/rotate-key`, { method: "POST", key: ADMIN_KEY });
+    const res = await api(`/admin/inboxes/${inbox.id}/rotate-key`, { method: "POST", key: ADMIN_KEY });
     const { api_key } = (await res.json()) as { api_key: string };
     expect((await api("/messages", { key: inbox.api_key })).status).toBe(401);
     expect((await api("/messages", { key: api_key })).status).toBe(200);
@@ -68,7 +105,7 @@ describe("admin", () => {
     await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://example.com/hook" } });
     await receive(eml(), inbox.address, { WEBHOOKS: { sendBatch: async () => {} } as any });
 
-    const res = await api(`/admin/inboxes/${inbox.address}`, { method: "DELETE", key: ADMIN_KEY });
+    const res = await api(`/admin/inboxes/${inbox.id}`, { method: "DELETE", key: ADMIN_KEY });
     expect(res.status).toBe(200);
     for (const table of ["inboxes", "webhooks", "messages"]) {
       const row = await env.DB.prepare(`SELECT COUNT(*) AS n, COUNT(deleted_at) AS deleted FROM ${table}`).first();
@@ -80,14 +117,15 @@ describe("admin", () => {
     expect(list.inboxes).toEqual([]);
     expect((await api("/messages", { key: inbox.api_key })).status).toBe(401);
     expect((await receive(eml(), inbox.address)).setReject).toHaveBeenCalledWith("Unknown recipient");
-    expect((await api(`/admin/inboxes/${inbox.address}/rotate-key`, { method: "POST", key: ADMIN_KEY })).status).toBe(404);
-    expect((await api(`/admin/inboxes/${inbox.address}`, { method: "DELETE", key: ADMIN_KEY })).status).toBe(404);
+    expect((await api(`/admin/inboxes/${inbox.id}/rotate-key`, { method: "POST", key: ADMIN_KEY })).status).toBe(404);
+    expect((await api(`/admin/inboxes/${inbox.id}`, { method: "PATCH", key: ADMIN_KEY, body: { name: "x" } })).status).toBe(404);
+    expect((await api(`/admin/inboxes/${inbox.id}`, { method: "DELETE", key: ADMIN_KEY })).status).toBe(404);
   });
 
   it("reuses a deleted address as a new, empty inbox", async () => {
     const old = await createInbox("agent");
     await receive(eml(), old.address);
-    await api(`/admin/inboxes/${old.address}`, { method: "DELETE", key: ADMIN_KEY });
+    await api(`/admin/inboxes/${old.id}`, { method: "DELETE", key: ADMIN_KEY });
 
     const res = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { address: old.address } });
     expect(res.status).toBe(201);

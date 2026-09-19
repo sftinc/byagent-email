@@ -16,7 +16,7 @@ export async function deliverWebhook(job: WebhookJob, env: Env): Promise<boolean
   const email = hook && (await loadMessage(env, hook.inbox_id, job.messageId, "in"));
   if (!hook || !email) return true;
 
-  const { html, cc, bcc, ...message } = summarize(job.messageId, email);
+  const { html, cc, bcc, headers, ...message } = summarize(job.messageId, email);
   const body = JSON.stringify({ inbox: hook.address, message });
   const timestamp = String(Date.now());
   const signature = await hmacSha256(hook.secret, `${timestamp}.${body}`);

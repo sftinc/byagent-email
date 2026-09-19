@@ -7,6 +7,12 @@ export interface Env {
   ADMIN_KEY: string;
 }
 
+export interface Inbox {
+  id: string;
+  address: string;
+  name: string | null;
+}
+
 export interface WebhookJob {
   webhookId: string;
   messageId: string;

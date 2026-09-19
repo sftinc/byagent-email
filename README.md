@@ -70,19 +70,22 @@ Deletes are soft everywhere: a deleted inbox, webhook or message disappears from
 All admin calls use `Authorization: Bearer <ADMIN_KEY>`.
 
 ```bash
-# Create an inbox. The api_key is shown only once.
-curl -X POST $URL/admin/inboxes -H "Authorization: Bearer $ADMIN_KEY" -d '{"address":"claude@example.com"}'
-# → {"address":"claude@example.com","api_key":"…"}
+# Create an inbox. name is optional. The api_key is shown only once.
+curl -X POST $URL/admin/inboxes -H "Authorization: Bearer $ADMIN_KEY" -d '{"address":"claude@example.com","name":"Claude"}'
+# → {"id":"…","address":"claude@example.com","name":"Claude","api_key":"…"}
 ```
 
 Inboxes can be on any domain you've set up for this Worker (see Setup). Creating an inbox checks that the domain's MX records point at Cloudflare Email Routing, which catches typos and domains that aren't set up yet. It can't confirm that the catch-all rule targets this Worker, so check that step in the dashboard.
 
 | Method | Path | |
 |---|---|---|
-| `POST` | `/admin/inboxes` | `{address}` → `{address, api_key}` |
-| `GET` | `/admin/inboxes` | List inboxes |
-| `DELETE` | `/admin/inboxes/:address` | Delete the inbox, its webhooks and its mail. The address can then be used for a new inbox. |
-| `POST` | `/admin/inboxes/:address/rotate-key` | Returns a new `api_key` |
+| `POST` | `/admin/inboxes` | `{address, name?}` → `{id, address, name, api_key}` |
+| `GET` | `/admin/inboxes` | List inboxes: `id`, `address`, `name`, `created_at` |
+| `PATCH` | `/admin/inboxes/:id` | `{name}` sets the display name (`null` or `""` removes it) → `{id, address, name}` |
+| `DELETE` | `/admin/inboxes/:id` | Delete the inbox, its webhooks and its mail. The address can then be used for a new inbox. |
+| `POST` | `/admin/inboxes/:id/rotate-key` | Returns a new `api_key` |
+
+Admin routes take the inbox `id`, from creation or `GET /admin/inboxes`. An inbox's `name` is optional; when set, its mail is sent as `Name <address>`. It can be up to 100 characters, with no line breaks.
 
 ## Agent API
 
@@ -90,15 +93,19 @@ All agent calls use `Authorization: Bearer <api_key>`.
 
 | Method | Path | |
 |---|---|---|
-| `POST` | `/send` | `{to, cc?, bcc?, subject, text?, html?, attachments?: [{filename, type, content (base64)}]}` → `{id, messageId}`. The sent message is saved, and `id` works with the `/messages/:id` routes. |
-| `GET` | `/messages?direction=in&unread=true&from=<text>&to=<text>&subject=<text>&before=<id>&after=<id>` | List messages, 20 per page, newest first → `{messages, paging: {before, after}}`. For older mail pass `paging.before` as `before`, for newer mail `paging.after` as `after`; `null` means there is no more that way. `direction` is `in` (received, the default), `out` (sent) or `all`. Each message lists its `recipients` (to, cc and, for sent mail, bcc). `from` matches part of the sender address, `to` part of any recipient and `subject` part of the subject, all ignoring case (e.g. `from=@example.com`). |
-| `GET` | `/messages/:id` | Full message: `from`, `to`, `cc`, `bcc` (sent mail), `subject`, `date`, `text`, `html`, attachment list, `read` |
+| `POST` | `/send` | `{to, cc?, bcc?, subject, text?, html?, attachments?: [{filename, type, content (base64)}], reply_to_id?}` → `{id, messageId}`. The sent message is saved, and `id` works with the `/messages/:id` routes. |
+| `GET` | `/messages?direction=in&unread=true&from=<text>&to=<text>&subject=<text>&before=<id>&after=<id>` | List messages, 20 per page, newest first → `{messages, paging: {before, after}}`. For older mail pass `paging.before` as `before`, for newer mail `paging.after` as `after`; `null` means there is no more that way. `direction` is `in` (received, the default), `out` (sent) or `all`. Each message has `from` as `{name, address}` and lists its `recipients` (to, cc and, for sent mail, bcc). `from` matches part of the sender address, `to` part of any recipient and `subject` part of the subject, all ignoring case (e.g. `from=@example.com`). |
+| `GET` | `/messages/:id` | Full message: `message_id`, `in_reply_to`, `references`, `from`, `reply_to`, `to`, `cc`, `bcc` (sent mail), `subject`, `date`, `text`, `html`, attachment list, all `headers`, `direction`, `read`, `created_at`. Addresses are `{name, address}`. |
 | `GET` | `/messages/:id/attachments/:index` | Download an attachment |
 | `POST` | `/messages/:id/read` | Mark read |
 | `DELETE` | `/messages/:id` | Delete |
 | `GET` / `POST` / `DELETE` | `/webhooks[/:id]` | List, add (`{url}`, https only → `{id, url, secret}`), remove |
 
 Send limits come from Cloudflare: 5 MiB per message, 32 attachments, 50 recipients.
+
+To reply in a thread, pass `reply_to_id`: the `id` of a message in this inbox. The Worker sets the
+`In-Reply-To` and `References` headers from it, so the reply threads in the recipient's mail client.
+Replies to replies keep the chain. Set `to` and the subject yourself, e.g. `Re: <subject>`.
 
 A received message's `from` comes from its headers and isn't verified, so don't treat it as proof of who sent it.
 
@@ -108,7 +115,10 @@ When mail arrives, each of the inbox's webhooks gets a `POST`:
 
 ```json
 { "inbox": "claude@example.com",
-  "message": { "id": "…", "from": "…", "to": ["…"], "subject": "…", "date": "…", "text": "…",
+  "message": { "id": "…", "message_id": "<…>", "in_reply_to": null, "references": [],
+               "from": { "name": "Bob", "address": "bob@example.org" }, "reply_to": [],
+               "to": [{ "name": "", "address": "claude@example.com" }],
+               "subject": "…", "date": "…", "text": "…",
                "attachments": [{ "index": 0, "filename": "a.pdf", "type": "application/pdf", "size": 1234 }] } }
 ```
 

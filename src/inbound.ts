@@ -18,12 +18,13 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env): P
 
   await env.MAIL.put(mailKey(inbox.id, id, "in"), raw);
   await env.DB.prepare(
-    "INSERT INTO messages (id, inbox_id, direction, from_addr, recipients, subject, created_at) VALUES (?, ?, 'in', ?, ?, ?, ?)",
+    "INSERT INTO messages (id, inbox_id, direction, from_addr, from_name, recipients, subject, created_at) VALUES (?, ?, 'in', ?, ?, ?, ?, ?)",
   )
     .bind(
       id,
       inbox.id,
       email.from?.address ?? message.from,
+      email.from?.name ?? "",
       [...addresses(email.to), ...addresses(email.cc)].join(",").toLowerCase(),
       email.subject ?? null,
       Date.now(),

@@ -3,11 +3,11 @@ import { except } from "hono/combine";
 import { createMiddleware } from "hono/factory";
 import { admin } from "./admin";
 import { randomToken, sha256, uuidv7 } from "./crypto";
-import type { Env } from "./env";
+import type { Env, Inbox } from "./env";
 import { type Direction, loadMessage, saveSent, summarize } from "./mail";
 import { buildEmail } from "./send";
 
-type App = { Bindings: Env; Variables: { inboxId: string; address: string } };
+type App = { Bindings: Env; Variables: { inbox: Inbox } };
 
 export const app = new Hono<App>();
 
@@ -21,13 +21,12 @@ app.onError((err, c) => {
 const inboxAuth = createMiddleware<App>(async (c, next) => {
   const token = c.req.header("Authorization")?.replace(/^Bearer /, "");
   const row = token
-    ? await c.env.DB.prepare("SELECT id, address FROM inboxes WHERE key_hash = ? AND deleted_at IS NULL")
+    ? await c.env.DB.prepare("SELECT id, address, name FROM inboxes WHERE key_hash = ? AND deleted_at IS NULL")
         .bind(await sha256(token))
-        .first<{ id: string; address: string }>()
+        .first<Inbox>()
     : null;
   if (!row) return c.json({ error: "Unauthorized" }, 401);
-  c.set("inboxId", row.id);
-  c.set("address", row.address);
+  c.set("inbox", row);
   await next();
 });
 
@@ -38,7 +37,7 @@ app.use("*", except("/admin/*", inboxAuth));
 // with no ties. `paging.before` / `paging.after` are the ids to pass for older / newer mail.
 app.get("/messages", async (c) => {
   let where = "inbox_id = ? AND deleted_at IS NULL";
-  const params: unknown[] = [c.get("inboxId")];
+  const params: unknown[] = [c.get("inbox").id];
   const direction = c.req.query("direction") ?? "in";
   if (!["in", "out", "all"].includes(direction)) return c.json({ error: "`direction` must be in, out or all" }, 400);
   if (direction !== "all") {
@@ -60,10 +59,10 @@ app.get("/messages", async (c) => {
   // Fetch one extra row to learn whether there's more in the direction we're paging.
   const cursor = after ? " AND id > ? ORDER BY id ASC" : before ? " AND id < ? ORDER BY id DESC" : " ORDER BY id DESC";
   const { results } = await c.env.DB.prepare(
-    `SELECT id, direction, from_addr AS "from", recipients, subject, read, created_at FROM messages WHERE ${where}${cursor} LIMIT 21`,
+    `SELECT id, direction, from_addr, from_name, recipients, subject, read, created_at FROM messages WHERE ${where}${cursor} LIMIT 21`,
   )
     .bind(...params, ...(after || before ? [after || before] : []))
-    .all<{ id: string; recipients: string; read: number }>();
+    .all<{ id: string; from_addr: string; from_name: string; recipients: string; read: number }>();
   const more = results.length > 20;
   const page = results.slice(0, 20);
   if (after) page.reverse();
@@ -78,29 +77,34 @@ app.get("/messages", async (c) => {
   const hasNewer = after ? more : await exists(">", newest);
 
   return c.json({
-    messages: page.map((m) => ({ ...m, recipients: m.recipients ? m.recipients.split(",") : [], read: m.read === 1 })),
+    messages: page.map(({ from_addr, from_name, ...m }) => ({
+      ...m,
+      from: { name: from_name, address: from_addr },
+      recipients: m.recipients ? m.recipients.split(",") : [],
+      read: m.read === 1,
+    })),
     paging: { before: hasOlder ? oldest : null, after: hasNewer ? newest : null },
   });
 });
 
 async function findMessage(env: Env, inboxId: string, id: string) {
-  return env.DB.prepare("SELECT read, direction FROM messages WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL")
+  return env.DB.prepare("SELECT direction, read, created_at FROM messages WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL")
     .bind(id, inboxId)
-    .first<{ read: number; direction: Direction }>();
+    .first<{ direction: Direction; read: number; created_at: number }>();
 }
 
 app.get("/messages/:id", async (c) => {
   const id = c.req.param("id");
-  const row = await findMessage(c.env, c.get("inboxId"), id);
-  const email = row && (await loadMessage(c.env, c.get("inboxId"), id, row.direction));
+  const row = await findMessage(c.env, c.get("inbox").id, id);
+  const email = row && (await loadMessage(c.env, c.get("inbox").id, id, row.direction));
   if (!row || !email) return c.json({ error: "Message not found" }, 404);
-  return c.json({ ...summarize(id, email), read: row.read === 1 });
+  return c.json({ ...summarize(id, email), direction: row.direction, read: row.read === 1, created_at: row.created_at });
 });
 
 app.get("/messages/:id/attachments/:index", async (c) => {
   const id = c.req.param("id");
-  const row = await findMessage(c.env, c.get("inboxId"), id);
-  const email = row && (await loadMessage(c.env, c.get("inboxId"), id, row.direction));
+  const row = await findMessage(c.env, c.get("inbox").id, id);
+  const email = row && (await loadMessage(c.env, c.get("inbox").id, id, row.direction));
   const attachment = email?.attachments[Number(c.req.param("index"))];
   if (!attachment) return c.json({ error: "Attachment not found" }, 404);
   const filename = attachment.filename ?? "attachment";
@@ -115,7 +119,7 @@ app.get("/messages/:id/attachments/:index", async (c) => {
 
 app.post("/messages/:id/read", async (c) => {
   const { meta } = await c.env.DB.prepare("UPDATE messages SET read = 1 WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL")
-    .bind(c.req.param("id"), c.get("inboxId"))
+    .bind(c.req.param("id"), c.get("inbox").id)
     .run();
   if (meta.changes === 0) return c.json({ error: "Message not found" }, 404);
   return c.json({ ok: true });
@@ -125,7 +129,7 @@ app.delete("/messages/:id", async (c) => {
   const { meta } = await c.env.DB.prepare(
     "UPDATE messages SET deleted_at = ? WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL",
   )
-    .bind(Date.now(), c.req.param("id"), c.get("inboxId"))
+    .bind(Date.now(), c.req.param("id"), c.get("inbox").id)
     .run();
   if (meta.changes === 0) return c.json({ error: "Message not found" }, 404);
   return c.json({ ok: true });
@@ -133,7 +137,7 @@ app.delete("/messages/:id", async (c) => {
 
 app.get("/webhooks", async (c) => {
   const { results } = await c.env.DB.prepare("SELECT id, url FROM webhooks WHERE inbox_id = ? AND deleted_at IS NULL")
-    .bind(c.get("inboxId"))
+    .bind(c.get("inbox").id)
     .all();
   return c.json({ webhooks: results });
 });
@@ -143,13 +147,13 @@ app.post("/webhooks", async (c) => {
   const url = typeof body.url === "string" && URL.canParse(body.url) ? new URL(body.url) : null;
   if (url?.protocol !== "https:") return c.json({ error: "`url` must be an https:// URL" }, 400);
   const count = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM webhooks WHERE inbox_id = ? AND deleted_at IS NULL")
-    .bind(c.get("inboxId"))
+    .bind(c.get("inbox").id)
     .first<{ n: number }>();
   if ((count?.n ?? 0) >= 10) return c.json({ error: "At most 10 webhooks per inbox" }, 400);
   const id = uuidv7();
   const secret = randomToken();
   await c.env.DB.prepare("INSERT INTO webhooks (id, inbox_id, url, secret, created_at) VALUES (?, ?, ?, ?, ?)")
-    .bind(id, c.get("inboxId"), url.href, secret, Date.now())
+    .bind(id, c.get("inbox").id, url.href, secret, Date.now())
     .run();
   return c.json({ id, url: url.href, secret }, 201);
 });
@@ -158,21 +162,34 @@ app.delete("/webhooks/:id", async (c) => {
   const { meta } = await c.env.DB.prepare(
     "UPDATE webhooks SET deleted_at = ? WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL",
   )
-    .bind(Date.now(), c.req.param("id"), c.get("inboxId"))
+    .bind(Date.now(), c.req.param("id"), c.get("inbox").id)
     .run();
   if (meta.changes === 0) return c.json({ error: "Webhook not found" }, 404);
   return c.json({ ok: true });
 });
 
 app.post("/send", async (c) => {
-  const built = buildEmail(await c.req.json().catch(() => null), c.get("address"));
+  const inbox = c.get("inbox");
+  const from = inbox.name ? { email: inbox.address, name: inbox.name } : inbox.address;
+  const body = await c.req.json<any>().catch(() => null);
+  const built = buildEmail(body, from);
   if (!built.ok) return c.json({ error: built.error }, built.status);
+
+  // `reply_to_id` is one of this inbox's messages: reply in its thread.
+  if (body.reply_to_id !== undefined) {
+    const replyTo = typeof body.reply_to_id === "string" ? body.reply_to_id : "";
+    const row = replyTo ? await findMessage(c.env, inbox.id, replyTo) : null;
+    const parent = row && (await loadMessage(c.env, inbox.id, replyTo, row.direction));
+    if (!parent?.messageId) return c.json({ error: "`reply_to_id` is not a message in this inbox" }, 400);
+    const references = [...(parent.references?.split(/\s+/).filter(Boolean) ?? []), parent.messageId];
+    built.message.headers = { "In-Reply-To": parent.messageId, References: references.join(" ") };
+  }
   let messageId: string;
   try {
     ({ messageId } = await c.env.EMAIL.send(built.message));
   } catch (err: any) {
     return c.json({ error: err?.code ?? err?.message ?? "Send failed" }, 502);
   }
-  const id = await saveSent(c.env, c.get("inboxId"), c.get("address"), built.message);
+  const id = await saveSent(c.env, inbox, built.message, messageId);
   return c.json({ id, messageId });
 });

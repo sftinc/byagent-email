@@ -5,6 +5,7 @@ CREATE TABLE inboxes (
   id         TEXT PRIMARY KEY,
   -- identity
   address    TEXT NOT NULL,
+  name       TEXT,              -- optional display name for outgoing mail
   -- auth
   key_hash   TEXT NOT NULL,
   -- dates
@@ -31,6 +32,7 @@ CREATE TABLE messages (
   -- routing
   direction  TEXT NOT NULL,     -- 'in' (received) or 'out' (sent)
   from_addr  TEXT NOT NULL,
+  from_name  TEXT NOT NULL,     -- '' when the sender has no display name
   recipients TEXT NOT NULL,     -- to, cc and (for sent mail) bcc, comma-separated
   -- content
   subject    TEXT,

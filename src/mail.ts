@@ -1,6 +1,6 @@
 import PostalMime, { type Address, type Email } from "postal-mime";
 import { uuidv7 } from "./crypto";
-import type { Env } from "./env";
+import type { Env, Inbox } from "./env";
 
 export type Direction = "in" | "out";
 
@@ -19,14 +19,17 @@ export async function loadMessage(env: Env, inboxId: string, id: string, directi
 }
 
 // Saves a message built by buildEmail, whose recipients are string arrays and attachments are bytes.
-export async function saveSent(env: Env, inboxId: string, address: string, message: EmailMessageBuilder): Promise<string> {
+export async function saveSent(env: Env, inbox: Inbox, message: EmailMessageBuilder, messageId: string): Promise<string> {
   const id = uuidv7();
   const [to, cc, bcc] = [message.to, message.cc, message.bcc].map((list) => (list ?? []) as string[]);
   const email = {
-    from: { name: "", address },
+    from: { name: inbox.name ?? "", address: inbox.address },
     to: to.map((address) => ({ name: "", address })),
     cc: cc.map((address) => ({ name: "", address })),
     bcc: bcc.map((address) => ({ name: "", address })),
+    messageId,
+    inReplyTo: message.headers?.["In-Reply-To"],
+    references: message.headers?.References,
     subject: message.subject,
     date: new Date().toISOString(),
     text: message.text,
@@ -37,26 +40,43 @@ export async function saveSent(env: Env, inboxId: string, address: string, messa
       content: (a.content as Uint8Array).toBase64(),
     })),
   };
-  await env.MAIL.put(mailKey(inboxId, id, "out"), JSON.stringify(email));
+  await env.MAIL.put(mailKey(inbox.id, id, "out"), JSON.stringify(email));
   await env.DB.prepare(
-    "INSERT INTO messages (id, inbox_id, direction, from_addr, recipients, subject, read, created_at) VALUES (?, ?, 'out', ?, ?, ?, 1, ?)",
+    "INSERT INTO messages (id, inbox_id, direction, from_addr, from_name, recipients, subject, read, created_at) VALUES (?, ?, 'out', ?, ?, ?, ?, 1, ?)",
   )
-    .bind(id, inboxId, address, [...to, ...cc, ...bcc].join(",").toLowerCase(), message.subject, Date.now())
+    .bind(
+      id,
+      inbox.id,
+      inbox.address,
+      inbox.name ?? "",
+      [...to, ...cc, ...bcc].join(",").toLowerCase(),
+      message.subject,
+      Date.now(),
+    )
     .run();
   return id;
 }
 
+// Flattens address groups into their members, as { name, address }.
+function contacts(list: Address[] = []): { name: string; address: string }[] {
+  return list.flatMap((a) => (a.group ? a.group : [a])).map((a) => ({ name: a.name, address: a.address ?? "" }));
+}
+
 export function addresses(list: Address[] = []): string[] {
-  return list.flatMap((a) => (a.address ? [a.address] : (a.group ?? []).map((m) => m.address)));
+  return contacts(list).map((c) => c.address);
 }
 
 export function summarize(id: string, email: Email) {
   return {
     id,
-    from: email.from?.address ?? "",
-    to: addresses(email.to),
-    cc: addresses(email.cc),
-    bcc: addresses(email.bcc),
+    message_id: email.messageId ?? null,
+    in_reply_to: email.inReplyTo ?? null,
+    references: email.references?.split(/\s+/).filter(Boolean) ?? [],
+    from: email.from ? contacts([email.from])[0] : null,
+    reply_to: contacts(email.replyTo),
+    to: contacts(email.to),
+    cc: contacts(email.cc),
+    bcc: contacts(email.bcc),
     subject: email.subject ?? "",
     date: email.date ?? null,
     text: email.text ?? "",
@@ -67,5 +87,6 @@ export function summarize(id: string, email: Email) {
       type: a.mimeType,
       size: typeof a.content === "string" ? a.content.length : a.content.byteLength,
     })),
+    headers: (email.headers ?? []).map(({ key, value }) => ({ key, value })),
   };
 }

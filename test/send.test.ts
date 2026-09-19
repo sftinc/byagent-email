@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildEmail } from "../src/send";
-import { api, createInbox, reset } from "./helpers";
+import { api, createInbox, eml, receive, reset } from "./helpers";
 
 beforeEach(reset);
 
@@ -67,6 +67,59 @@ describe("POST /send", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: expect.any(String), messageId: "cf-123" });
     expect(send).toHaveBeenCalledWith({ from: address, to: ["a@x.com"], subject: "Hi", text: "Hello" });
+  });
+
+  it("sends under the inbox's name when it has one", async () => {
+    const { api_key: key, address } = await createInbox("agent", "Agent Smith");
+    const send = vi.fn(async () => ({ messageId: "cf-1" }));
+    const res = await api("/send", { method: "POST", key, body: { to: "a@x.com", subject: "Hi", text: "Hello" } }, { EMAIL: { send } as any });
+    const { id } = (await res.json()) as { id: string };
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ from: { email: address, name: "Agent Smith" } }));
+
+    const full = (await (await api(`/messages/${id}`, { key })).json()) as { from: unknown };
+    expect(full.from).toEqual({ name: "Agent Smith", address });
+    const list = (await (await api("/messages?direction=out", { key })).json()) as { messages: { from: unknown }[] };
+    expect(list.messages[0].from).toEqual({ name: "Agent Smith", address });
+  });
+
+  it("replies in a thread with reply_to_id", async () => {
+    const inbox = await createInbox("agent");
+    const key = inbox.api_key;
+    await receive(eml({ headers: "Message-ID: <first@x.com>\r\nReferences: <root@x.com>\r\n" }), inbox.address);
+    const { messages } = (await (await api("/messages", { key })).json()) as { messages: { id: string }[] };
+
+    const send = vi.fn(async () => ({ messageId: "<reply@ours>" }));
+    const body = { to: "a@x.com", subject: "Re: Hello", text: "Replying", reply_to_id: messages[0].id };
+    const res = await api("/send", { method: "POST", key, body }, { EMAIL: { send } as any });
+    expect(res.status).toBe(200);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ headers: { "In-Reply-To": "<first@x.com>", References: "<root@x.com> <first@x.com>" } }),
+    );
+
+    // The saved reply keeps the thread, so replies can chain.
+    const { id } = (await res.json()) as { id: string };
+    const saved = (await (await api(`/messages/${id}`, { key })).json()) as any;
+    expect(saved).toMatchObject({ in_reply_to: "<first@x.com>", references: ["<root@x.com>", "<first@x.com>"] });
+
+    const chained = await api("/send", { method: "POST", key, body: { ...body, reply_to_id: id } }, { EMAIL: { send } as any });
+    expect(chained.status).toBe(200);
+    expect(send).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        headers: { "In-Reply-To": "<reply@ours>", References: "<root@x.com> <first@x.com> <reply@ours>" },
+      }),
+    );
+  });
+
+  it("rejects a reply_to_id from another inbox or a missing message", async () => {
+    const { api_key: key } = await createInbox("agent");
+    const other = await createInbox("other");
+    await receive(eml({ headers: "Message-ID: <x@x.com>\r\n" }), other.address);
+    const theirs = (await (await api("/messages", { key: other.api_key })).json()) as { messages: { id: string }[] };
+
+    for (const reply_to_id of [theirs.messages[0].id, "nope", 5]) {
+      const res = await api("/send", { method: "POST", key, body: { to: "a@x.com", subject: "Hi", text: "x", reply_to_id } });
+      expect(res.status).toBe(400);
+    }
   });
 
   it("returns 400 for a bad body and 502 with the Cloudflare error code", async () => {

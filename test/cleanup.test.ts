@@ -10,7 +10,7 @@ const DAY = 86_400_000;
 async function addMessage(id: string, createdAt: number) {
   await env.DB.prepare("INSERT OR IGNORE INTO inboxes (id, address, key_hash, created_at, updated_at) VALUES ('i1', 'a@x.com', 'h', 0, 0)").run();
   await env.DB.prepare(
-    "INSERT INTO messages (id, inbox_id, direction, from_addr, recipients, subject, created_at) VALUES (?, 'i1', 'in', 's@x.com', '', 'x', ?)",
+    "INSERT INTO messages (id, inbox_id, direction, from_addr, from_name, recipients, subject, created_at) VALUES (?, 'i1', 'in', 's@x.com', '', '', 'x', ?)",
   )
     .bind(id, createdAt)
     .run();
