@@ -115,6 +115,10 @@ describe("admin", () => {
 
     const list = (await (await api("/admin/inboxes", { key: ADMIN_KEY })).json()) as { inboxes: unknown[] };
     expect(list.inboxes).toEqual([]);
+    const deleted = (await (await api("/admin/inboxes?deleted=true", { key: ADMIN_KEY })).json()) as { inboxes: any[] };
+    expect(deleted.inboxes).toEqual([
+      { id: inbox.id, address: inbox.address, name: null, created_at: expect.any(Number), deleted_at: expect.any(Number) },
+    ]);
     expect((await api("/messages", { key: inbox.api_key })).status).toBe(401);
     expect((await receive(eml(), inbox.address)).setReject).toHaveBeenCalledWith("Unknown recipient");
     expect((await api(`/admin/inboxes/${inbox.id}/rotate-key`, { method: "POST", key: ADMIN_KEY })).status).toBe(404);

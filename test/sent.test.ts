@@ -39,6 +39,7 @@ describe("sent mail", () => {
         subject: "Report",
         created_at: expect.any(Number),
         read: true,
+        deleted_at: null,
       },
     ]);
   });
@@ -67,6 +68,7 @@ describe("sent mail", () => {
       headers: [],
       read: true,
       created_at: expect.any(Number),
+      deleted_at: null,
     });
 
     const file = await api(`/messages/${id}/attachments/0`, { key: inbox.api_key });

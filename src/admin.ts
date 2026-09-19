@@ -63,8 +63,10 @@ admin.post("/inboxes", async (c) => {
 });
 
 admin.get("/inboxes", async (c) => {
+  const deleted = c.req.query("deleted") === "true";
   const { results } = await c.env.DB.prepare(
-    "SELECT id, address, name, created_at FROM inboxes WHERE deleted_at IS NULL ORDER BY address",
+    `SELECT id, address, name, created_at${deleted ? ", deleted_at" : ""} FROM inboxes
+     WHERE deleted_at IS ${deleted ? "NOT NULL" : "NULL"} ORDER BY address`,
   ).all();
   return c.json({ inboxes: results });
 });

@@ -24,6 +24,8 @@ describe("webhook endpoints", () => {
     expect((await api(`/webhooks/${a.id}`, { method: "DELETE", key })).status).toBe(404);
     const after = (await (await api("/webhooks", { key })).json()) as { webhooks: any[] };
     expect(after.webhooks).toEqual([{ id: b.id, url: "https://b.example/hook" }]);
+    const deleted = (await (await api("/webhooks?deleted=true", { key })).json()) as { webhooks: any[] };
+    expect(deleted.webhooks).toEqual([{ id: a.id, url: "https://a.example/hook", deleted_at: expect.any(Number) }]);
   });
 
   it("caps webhooks at 10 per inbox", async () => {

@@ -63,7 +63,7 @@ Enabling Email Routing replaces the domain's MX records, so use a domain (or sub
 
 To add or change the API hostname later, set `routes` in `wrangler.jsonc` to `[{ "pattern": "api.example.com", "custom_domain": true }]` and redeploy.
 
-Deletes are soft everywhere: a deleted inbox, webhook or message disappears from the API, but its database row and stored mail are kept.
+Deletes are soft everywhere: a deleted inbox, webhook or message disappears from the lists, but its database row and stored mail are kept. Pass `deleted=true` to a list to see deleted items instead, each with its `deleted_at`.
 
 ## Admin API
 
@@ -80,7 +80,7 @@ Inboxes can be on any domain you've set up for this Worker (see Setup). Creating
 | Method | Path | |
 |---|---|---|
 | `POST` | `/admin/inboxes` | `{address, name?}` → `{id, address, name, api_key}` |
-| `GET` | `/admin/inboxes` | List inboxes: `id`, `address`, `name`, `created_at` |
+| `GET` | `/admin/inboxes?deleted=true` | List inboxes: `id`, `address`, `name`, `created_at` |
 | `PATCH` | `/admin/inboxes/:id` | `{name}` sets the display name (`null` or `""` removes it) → `{id, address, name}` |
 | `DELETE` | `/admin/inboxes/:id` | Delete the inbox, its webhooks and its mail. The address can then be used for a new inbox. |
 | `POST` | `/admin/inboxes/:id/rotate-key` | Returns a new `api_key` |
@@ -94,12 +94,12 @@ All agent calls use `Authorization: Bearer <api_key>`.
 | Method | Path | |
 |---|---|---|
 | `POST` | `/send` | `{to, cc?, bcc?, subject, text?, html?, attachments?: [{filename, type, content (base64)}], reply_to_id?}` → `{id, messageId}`. The sent message is saved, and `id` works with the `/messages/:id` routes. |
-| `GET` | `/messages?direction=in&unread=true&from=<text>&to=<text>&subject=<text>&before=<id>&after=<id>` | List messages, 20 per page, newest first → `{messages, paging: {before, after}}`. For older mail pass `paging.before` as `before`, for newer mail `paging.after` as `after`; `null` means there is no more that way. `direction` is `in` (received, the default), `out` (sent) or `all`. Each message has `from` as `{name, address}` and lists its `recipients` (to, cc and, for sent mail, bcc). `from` matches part of the sender address, `to` part of any recipient and `subject` part of the subject, all ignoring case (e.g. `from=@example.com`). |
-| `GET` | `/messages/:id` | Full message: `message_id`, `in_reply_to`, `references`, `from`, `reply_to`, `to`, `cc`, `bcc` (sent mail), `subject`, `date`, `text`, `html`, attachment list, all `headers`, `direction`, `read`, `created_at`. Addresses are `{name, address}`. |
+| `GET` | `/messages?direction=in&unread=true&deleted=false&from=<text>&to=<text>&subject=<text>&before=<id>&after=<id>` | List messages, 20 per page, newest first → `{messages, paging: {before, after}}`. For older mail pass `paging.before` as `before`, for newer mail `paging.after` as `after`; `null` means there is no more that way. `direction` is `in` (received, the default), `out` (sent) or `all`. Each message has `from` as `{name, address}` and lists its `recipients` (to, cc and, for sent mail, bcc). `from` matches part of the sender address, `to` part of any recipient and `subject` part of the subject, all ignoring case (e.g. `from=@example.com`). |
+| `GET` | `/messages/:id` | Full message, deleted or not: `message_id`, `in_reply_to`, `references`, `from`, `reply_to`, `to`, `cc`, `bcc` (sent mail), `subject`, `date`, `text`, `html`, attachment list, all `headers`, `direction`, `read`, `created_at`, `deleted_at`. Addresses are `{name, address}`. |
 | `GET` | `/messages/:id/attachments/:index` | Download an attachment |
 | `POST` | `/messages/:id/read` | Mark read |
 | `DELETE` | `/messages/:id` | Delete |
-| `GET` / `POST` / `DELETE` | `/webhooks[/:id]` | List, add (`{url}`, https only → `{id, url, secret}`), remove |
+| `GET` / `POST` / `DELETE` | `/webhooks[/:id]?deleted=true` | List, add (`{url}`, https only → `{id, url, secret}`), remove |
 
 Send limits come from Cloudflare: 5 MiB per message, 32 attachments, 50 recipients.
 

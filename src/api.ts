@@ -47,7 +47,9 @@ app.use("*", except(["/admin/*", "/health"], inboxAuth));
 // Lists messages 20 at a time, newest first. IDs are UUID v7, so they sort by creation time
 // with no ties. `paging.before` / `paging.after` are the ids to pass for older / newer mail.
 app.get("/messages", async (c) => {
-  let where = "inbox_id = ? AND deleted_at IS NULL";
+  // `deleted=true` lists only deleted messages; otherwise only live ones.
+  const deleted = c.req.query("deleted") === "true";
+  let where = `inbox_id = ? AND deleted_at IS ${deleted ? "NOT NULL" : "NULL"}`;
   const params: unknown[] = [c.get("inbox").id];
   const direction = c.req.query("direction") ?? "in";
   if (!["in", "out", "all"].includes(direction)) return c.json({ error: "`direction` must be in, out or all" }, 400);
@@ -70,7 +72,7 @@ app.get("/messages", async (c) => {
   // Fetch one extra row to learn whether there's more in the direction we're paging.
   const cursor = after ? " AND id > ? ORDER BY id ASC" : before ? " AND id < ? ORDER BY id DESC" : " ORDER BY id DESC";
   const { results } = await c.env.DB.prepare(
-    `SELECT id, direction, from_addr, from_name, recipients, subject, read, created_at FROM messages WHERE ${where}${cursor} LIMIT 21`,
+    `SELECT id, direction, from_addr, from_name, recipients, subject, read, created_at, deleted_at FROM messages WHERE ${where}${cursor} LIMIT 21`,
   )
     .bind(...params, ...(after || before ? [after || before] : []))
     .all<{ id: string; from_addr: string; from_name: string; recipients: string; read: number }>();
@@ -99,9 +101,10 @@ app.get("/messages", async (c) => {
 });
 
 async function findMessage(env: Env, inboxId: string, id: string) {
-  return env.DB.prepare("SELECT direction, read, created_at FROM messages WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL")
+  // Deleted messages are still readable by id; only changing them 404s.
+  return env.DB.prepare("SELECT direction, read, created_at, deleted_at FROM messages WHERE id = ? AND inbox_id = ?")
     .bind(id, inboxId)
-    .first<{ direction: Direction; read: number; created_at: number }>();
+    .first<{ direction: Direction; read: number; created_at: number; deleted_at: number | null }>();
 }
 
 app.get("/messages/:id", async (c) => {
@@ -109,7 +112,13 @@ app.get("/messages/:id", async (c) => {
   const row = await findMessage(c.env, c.get("inbox").id, id);
   const email = row && (await loadMessage(c.env, c.get("inbox").id, id, row.direction));
   if (!row || !email) return c.json({ error: "Message not found" }, 404);
-  return c.json({ ...summarize(id, email), direction: row.direction, read: row.read === 1, created_at: row.created_at });
+  return c.json({
+    ...summarize(id, email),
+    direction: row.direction,
+    read: row.read === 1,
+    created_at: row.created_at,
+    deleted_at: row.deleted_at,
+  });
 });
 
 app.get("/messages/:id/attachments/:index", async (c) => {
@@ -147,7 +156,10 @@ app.delete("/messages/:id", async (c) => {
 });
 
 app.get("/webhooks", async (c) => {
-  const { results } = await c.env.DB.prepare("SELECT id, url FROM webhooks WHERE inbox_id = ? AND deleted_at IS NULL")
+  const deleted = c.req.query("deleted") === "true";
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, url${deleted ? ", deleted_at" : ""} FROM webhooks WHERE inbox_id = ? AND deleted_at IS ${deleted ? "NOT NULL" : "NULL"}`,
+  )
     .bind(c.get("inbox").id)
     .all();
   return c.json({ webhooks: results });

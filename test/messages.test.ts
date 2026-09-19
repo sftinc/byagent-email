@@ -29,6 +29,7 @@ describe("messages", () => {
           subject: "First",
           read: false,
           created_at: expect.any(Number),
+          deleted_at: null,
         },
       ],
       paging: { before: null, after: null },
@@ -117,6 +118,7 @@ describe("messages", () => {
       headers: expect.arrayContaining([{ key: "subject", value: "First" }]),
       read: false,
       created_at: expect.any(Number),
+      deleted_at: null,
     });
   });
 
@@ -151,14 +153,17 @@ describe("messages", () => {
     expect(((await (await api(`/messages/${id}`, { key })).json()) as any).read).toBe(true);
 
     expect((await api(`/messages/${id}`, { method: "DELETE", key })).status).toBe(200);
-    expect((await api(`/messages/${id}`, { key })).status).toBe(404);
-    expect((await api(`/messages/${id}/attachments/0`, { key })).status).toBe(404);
     expect((await api(`/messages/${id}/read`, { method: "POST", key })).status).toBe(404);
     expect((await api(`/messages/${id}`, { method: "DELETE", key })).status).toBe(404);
     const list = (await (await api("/messages", { key })).json()) as { messages: unknown[] };
     expect(list.messages).toEqual([]);
-    const row = await env.DB.prepare("SELECT deleted_at FROM messages WHERE id = ?").bind(id).first<{ deleted_at: number }>();
-    expect(row!.deleted_at).toEqual(expect.any(Number));
     expect((await env.MAIL.list()).objects).toHaveLength(1);
+
+    // Deleted mail is listed with ?deleted=true, and can still be read by id.
+    const deleted = (await (await api("/messages?deleted=true", { key })).json()) as { messages: any[] };
+    expect(deleted.messages.map((m) => [m.id, typeof m.deleted_at])).toEqual([[id, "number"]]);
+    const full = (await (await api(`/messages/${id}`, { key })).json()) as any;
+    expect(full).toMatchObject({ id, subject: "First", deleted_at: expect.any(Number) });
+    expect((await api(`/messages/${id}/attachments/0`, { key })).status).toBe(200);
   });
 });
