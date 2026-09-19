@@ -16,7 +16,7 @@ CREATE TABLE inboxes (
 
 CREATE TABLE webhooks (
   id         TEXT PRIMARY KEY,
-  inbox_id   TEXT NOT NULL REFERENCES inboxes(id),
+  inbox_id   TEXT NOT NULL REFERENCES inboxes(id) ON DELETE CASCADE,
   -- target
   url        TEXT NOT NULL,
   -- auth
@@ -28,7 +28,7 @@ CREATE TABLE webhooks (
 
 CREATE TABLE messages (
   id         TEXT PRIMARY KEY,
-  inbox_id   TEXT NOT NULL REFERENCES inboxes(id),
+  inbox_id   TEXT NOT NULL REFERENCES inboxes(id) ON DELETE CASCADE,
   -- routing
   direction  TEXT NOT NULL,     -- 'in' (received) or 'out' (sent)
   from_addr  TEXT NOT NULL,

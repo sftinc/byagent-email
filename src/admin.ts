@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { randomToken, sha256, uuidv7 } from "./crypto";
 import type { Env } from "./env";
+import { purgeInboxFiles, purgeMessages } from "./mail";
 
 export const admin = new Hono<{ Bindings: Env }>();
 
@@ -108,6 +109,36 @@ admin.post("/inboxes/:id/restore", async (c) => {
     .bind(Date.now(), inbox.id)
     .run();
   return c.json({ id: inbox.id, address: inbox.address, name: inbox.name });
+});
+
+// Permanent, unlike every other delete. A live inbox loses only what was already deleted;
+// a deleted inbox is removed entirely, which needs ?confirm=true.
+admin.post("/inboxes/:id/purge", async (c) => {
+  const id = c.req.param("id");
+  const inbox = await c.env.DB.prepare("SELECT id, deleted_at FROM inboxes WHERE id = ?")
+    .bind(id)
+    .first<{ id: string; deleted_at: number | null }>();
+  if (!inbox) return c.json({ error: "Inbox not found" }, 404);
+
+  if (inbox.deleted_at) {
+    if (c.req.query("confirm") !== "true") {
+      return c.json({ error: "Purging a deleted inbox removes it and all its mail: pass ?confirm=true" }, 400);
+    }
+    const counts = await c.env.DB.batch<{ n: number }>([
+      c.env.DB.prepare("SELECT COUNT(*) AS n FROM messages WHERE inbox_id = ?").bind(id),
+      c.env.DB.prepare("SELECT COUNT(*) AS n FROM webhooks WHERE inbox_id = ?").bind(id),
+    ]);
+    // Its messages and webhooks go with it (ON DELETE CASCADE), then its stored mail.
+    await c.env.DB.prepare("DELETE FROM inboxes WHERE id = ?").bind(id).run();
+    await purgeInboxFiles(c.env, id);
+    return c.json({ messages: counts[0].results[0].n, webhooks: counts[1].results[0].n, inbox: true });
+  }
+
+  const messages = await purgeMessages(c.env, "inbox_id = ? AND deleted_at IS NOT NULL", id);
+  const { meta } = await c.env.DB.prepare("DELETE FROM webhooks WHERE inbox_id = ? AND deleted_at IS NOT NULL")
+    .bind(id)
+    .run();
+  return c.json({ messages, webhooks: meta.changes, inbox: false });
 });
 
 admin.post("/inboxes/:id/rotate-key", async (c) => {

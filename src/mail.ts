@@ -90,3 +90,28 @@ export function summarize(id: string, email: Email) {
     headers: (email.headers ?? []).map(({ key, value }) => ({ key, value })),
   };
 }
+
+// Permanently deletes the messages matching `where` (a fixed SQL fragment), from R2 and D1,
+// in batches. Used only by purge; normal deletes are soft.
+export async function purgeMessages(env: Env, where: string, ...params: unknown[]): Promise<number> {
+  let purged = 0;
+  while (true) {
+    const { results } = await env.DB.prepare(`SELECT id, inbox_id, direction FROM messages WHERE ${where} LIMIT 100`)
+      .bind(...params)
+      .all<{ id: string; inbox_id: string; direction: Direction }>();
+    if (results.length === 0) return purged;
+    await env.MAIL.delete(results.map((m) => mailKey(m.inbox_id, m.id, m.direction)));
+    await env.DB.batch(results.map((m) => env.DB.prepare("DELETE FROM messages WHERE id = ?").bind(m.id)));
+    purged += results.length;
+  }
+}
+
+// Deletes every stored file of an inbox, whatever its messages say.
+export async function purgeInboxFiles(env: Env, inboxId: string): Promise<void> {
+  let cursor: string | undefined;
+  do {
+    const listed = await env.MAIL.list({ prefix: `${inboxId}/`, cursor });
+    if (listed.objects.length > 0) await env.MAIL.delete(listed.objects.map((o) => o.key));
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+}

@@ -69,6 +69,10 @@ each with its `deleted_at`, and restore any of them with its `restore` route. De
 only the inbox: its mail and webhooks come back untouched when it is restored, so an address is never
 reused for a second inbox.
 
+Purge is the one permanent operation, and the only thing that frees storage. For a live inbox it
+removes what is already deleted, and nothing in use. For a deleted inbox it removes the inbox itself
+with all of its mail, files and webhooks, which needs `?confirm=true` and frees the address.
+
 ## Admin API
 
 All admin calls use `Authorization: Bearer <ADMIN_KEY>`.
@@ -88,6 +92,7 @@ Inboxes can be on any domain you've set up for this Worker (see Setup). Creating
 | `PATCH` | `/admin/inboxes/:id` | `{name}` sets the display name (`null` or `""` removes it) → `{id, address, name}` |
 | `DELETE` | `/admin/inboxes/:id` | Delete the inbox. Its key stops working and its mail is hidden. |
 | `POST` | `/admin/inboxes/:id/restore` | Bring a deleted inbox back, with its mail and webhooks |
+| `POST` | `/admin/inboxes/:id/purge` | Permanently remove what is deleted → `{messages, webhooks, inbox}` |
 | `POST` | `/admin/inboxes/:id/rotate-key` | Returns a new `api_key` |
 
 Admin routes take the inbox `id`, from creation or `GET /admin/inboxes`. An inbox's `name` is optional; when set, its mail is sent as `Name <address>`. It can be up to 100 characters, with no line breaks.
@@ -95,6 +100,24 @@ Admin routes take the inbox `id`, from creation or `GET /admin/inboxes`. An inbo
 ## Agent API
 
 All agent calls use `Authorization: Bearer <api_key>`.
+
+```bash
+# Send a message. reply_to_id, cc, bcc and attachments are optional.
+curl -X POST $URL/send -H "Authorization: Bearer $API_KEY" \
+  -d '{"to":"bob@example.org","subject":"Hello","text":"Hi Bob"}'
+# → {"id":"01a0…","messageId":"<…@example.com>"}
+
+# New mail, newest first, 20 per page.
+curl "$URL/messages?unread=true" -H "Authorization: Bearer $API_KEY"
+# → {"messages":[{"id":"01a0…","from":{"name":"Bob","address":"bob@example.org"},…}],
+#    "paging":{"before":null,"after":null}}
+
+# Read one, mark it read, then delete it.
+curl $URL/messages/01a0… -H "Authorization: Bearer $API_KEY"
+curl -X POST $URL/messages/01a0…/read -H "Authorization: Bearer $API_KEY"
+curl -X DELETE $URL/messages/01a0… -H "Authorization: Bearer $API_KEY"
+# → {"ok":true}, and POST .../restore brings it back
+```
 
 | Method | Path | |
 |---|---|---|
