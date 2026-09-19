@@ -13,6 +13,24 @@ Email Service. D1, R2 and Queues store the rest.
 - The Workers Paid plan, which Email Service sending requires.
 - Node.js 20+ and `npx wrangler login`.
 
+## Setup with an agent
+
+Paste this into a coding agent such as Claude Code:
+
+```text
+Set up byagent-email for me: https://github.com/sftinc/byagent-email
+
+1. Clone the repo and read its README.
+2. Ask me whether I want the API on a custom hostname (e.g. api.example.com).
+3. Check that I'm logged in with `npx wrangler whoami`. If not, ask me to run `npx wrangler login`.
+4. Run `npm install`, then `npm run setup` (add `-- --api <hostname>` if I gave one).
+5. Ask me which domain(s) to receive mail on. Walk me through the README's dashboard steps for each one, and wait until I say they're done.
+6. Create a test inbox with the admin API, using ADMIN_KEY from .dev.vars. Save its api_key and webhook_secret to .dev.vars.
+7. Send a test email from the inbox to an address I give you. Ask me to reply, then check that the reply shows up in GET /messages.
+
+Never print or commit any keys.
+```
+
 ## Setup
 
 ```bash
