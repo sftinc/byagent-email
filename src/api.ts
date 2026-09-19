@@ -89,3 +89,29 @@ app.delete("/messages/:id", async (c) => {
   await purgeMessages(c.env, "id = ?", id);
   return c.json({ ok: true });
 });
+
+app.get("/webhooks", async (c) => {
+  const { results } = await c.env.DB.prepare("SELECT id, url FROM webhooks WHERE inbox = ?")
+    .bind(c.get("inbox"))
+    .all();
+  return c.json({ webhooks: results });
+});
+
+app.post("/webhooks", async (c) => {
+  const body = await c.req.json<{ url?: unknown }>().catch(() => ({}) as { url?: unknown });
+  const url = typeof body.url === "string" && URL.canParse(body.url) ? new URL(body.url) : null;
+  if (url?.protocol !== "https:") return c.json({ error: "`url` must be an https:// URL" }, 400);
+  const id = crypto.randomUUID();
+  await c.env.DB.prepare("INSERT INTO webhooks (id, inbox, url) VALUES (?, ?, ?)")
+    .bind(id, c.get("inbox"), url.href)
+    .run();
+  return c.json({ id, url: url.href }, 201);
+});
+
+app.delete("/webhooks/:id", async (c) => {
+  const { meta } = await c.env.DB.prepare("DELETE FROM webhooks WHERE id = ? AND inbox = ?")
+    .bind(c.req.param("id"), c.get("inbox"))
+    .run();
+  if (meta.changes === 0) return c.json({ error: "Webhook not found" }, 404);
+  return c.json({ ok: true });
+});
