@@ -20,8 +20,9 @@ node_modules/
 dist/
 build/
 
-# Local planning docs
-docs/superpowers/
+# Local Claude files
+CLAUDE.md
+.superpowers/
 
 # Wrangler
 wrangler.jsonc
