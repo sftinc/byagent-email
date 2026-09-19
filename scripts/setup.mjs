@@ -4,7 +4,6 @@
 import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { parseArgs } from "node:util";
 
 const NAME = "byagent-email";
 
@@ -18,14 +17,12 @@ const tryRun = (cmd) => {
   }
 };
 
-// npm run setup [-- --api api.example.com]
-// --api serves the API on that hostname (custom domain). Without it the Worker uses workers.dev.
-const { values } = parseArgs({ options: { api: { type: "string" } } });
+// npm run setup [api.example.com]
+// The optional hostname serves the API on a custom domain. Without it the Worker uses workers.dev.
+const apiHost = process.argv[2]?.toLowerCase();
+if (apiHost && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(apiHost)) throw new Error(`Not a valid hostname: ${apiHost}`);
 
 run("npx wrangler whoami"); // fails early when not logged in
-
-const apiHost = values.api?.toLowerCase();
-if (apiHost && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(apiHost)) throw new Error(`Not a valid hostname: ${apiHost}`);
 
 console.log("Creating D1 database, R2 bucket and queue...");
 tryRun(`npx wrangler d1 create ${NAME}`);

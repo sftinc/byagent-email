@@ -23,7 +23,7 @@ Set up byagent-email for me: https://github.com/sftinc/byagent-email
 1. Clone the repo and read its README.
 2. Ask me whether I want the API on a custom hostname (e.g. api.example.com).
 3. Check that I'm logged in with `npx wrangler whoami`. If not, ask me to run `npx wrangler login`.
-4. Run `npm install`, then `npm run setup` (add `-- --api <hostname>` if I gave one).
+4. Run `npm install`, then `npm run setup` (add the hostname if I gave one: `npm run setup api.example.com`).
 5. Ask me which domain(s) to receive mail on. Walk me through the README's dashboard steps for each one, and wait until I say they're done.
 6. Create a test inbox with the admin API, using ADMIN_KEY from .dev.vars. Save its api_key and webhook_secret to .dev.vars.
 7. Send a test email from the inbox to an address I give you. Ask me to reply, then check that the reply shows up in GET /messages.
@@ -35,12 +35,12 @@ Never print or commit any keys.
 
 ```bash
 npm install
-npm run setup -- --api api.example.com
+npm run setup api.example.com
 ```
 
 The setup command:
 - creates the D1 database, R2 bucket and queue,
-- writes `wrangler.jsonc` (gitignored). `--api` is optional: it serves the API on that hostname as a custom domain. Leave it out to use the Worker's `workers.dev` URL,
+- writes `wrangler.jsonc` (gitignored). The hostname is optional: it serves the API on that hostname as a custom domain. Leave it out to use the Worker's `workers.dev` URL,
 - applies the database schema and deploys the Worker,
 - generates an `ADMIN_KEY` and saves it to `.dev.vars` (gitignored), which `wrangler dev` also uses. Load it with `source .dev.vars`.
 
