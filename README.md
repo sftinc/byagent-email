@@ -57,7 +57,7 @@ curl -X POST $URL/admin/inboxes -H "Authorization: Bearer $ADMIN_KEY" -d '{"addr
 
 Keep the `webhook_secret` from inbox creation. It isn't shown again.
 
-Inboxes can be on any domain you've set up for this Worker (see Setup). The address isn't checked against your domains, so a typo creates an inbox that never receives mail. Delete it and create it again.
+Inboxes can be on any domain you've set up for this Worker (see Setup). Creating an inbox checks that the domain's MX records point at Cloudflare Email Routing, which catches typos and domains that aren't set up yet. It can't confirm that the catch-all rule targets this Worker, so check that step in the dashboard.
 
 | Method | Path | |
 |---|---|---|

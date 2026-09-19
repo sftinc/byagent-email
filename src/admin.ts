@@ -5,6 +5,17 @@ import { purgeMessages } from "./mail";
 
 export const admin = new Hono<{ Bindings: Env }>();
 
+// True when the domain's MX records point at Cloudflare Email Routing. It doesn't prove the
+// catch-all rule targets this Worker, but it catches typos and domains that aren't set up.
+async function hasCloudflareMx(domain: string): Promise<boolean> {
+  const res = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=MX`, {
+    headers: { Accept: "application/dns-json" },
+  });
+  if (!res.ok) throw new Error(`DNS lookup for ${domain} failed: ${res.status}`);
+  const { Answer = [] } = await res.json<{ Answer?: { data: string }[] }>();
+  return Answer.some((a) => a.data.toLowerCase().endsWith(".mx.cloudflare.net."));
+}
+
 admin.use("*", async (c, next) => {
   const token = c.req.header("Authorization")?.replace(/^Bearer /, "") ?? "";
   if (!c.env.ADMIN_KEY || (await sha256(token)) !== (await sha256(c.env.ADMIN_KEY))) {
@@ -22,6 +33,10 @@ admin.post("/inboxes", async (c) => {
   }
   const exists = await c.env.DB.prepare("SELECT 1 FROM inboxes WHERE address = ?").bind(address).first();
   if (exists) return c.json({ error: "Inbox already exists" }, 409);
+  const domain = address.split("@")[1];
+  if (!(await hasCloudflareMx(domain))) {
+    return c.json({ error: `${domain} has no Cloudflare Email Routing MX records` }, 400);
+  }
 
   const apiKey = randomToken();
   const webhookSecret = randomToken();

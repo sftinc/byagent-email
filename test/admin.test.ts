@@ -39,6 +39,12 @@ describe("admin", () => {
     expect(((await res.json()) as { address: string }).address).toBe("bot@mail.other.org");
   });
 
+  it("refuses a domain that isn't set up for Cloudflare Email Routing", async () => {
+    const res = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { address: "bot@nomx.example.org" } });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "nomx.example.org has no Cloudflare Email Routing MX records" });
+  });
+
   it("rotates a key so the old one stops working", async () => {
     const inbox = await createInbox("agent");
     const res = await api(`/admin/inboxes/${inbox.address}/rotate-key`, { method: "POST", key: ADMIN_KEY });
