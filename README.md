@@ -9,7 +9,7 @@ Email Service. D1, R2 and Queues store the rest.
 
 ## Requirements
 
-- A domain on Cloudflare DNS. A subdomain (e.g. `mail.example.com`) works too.
+- One or more domains on Cloudflare DNS. A subdomain (e.g. `mail.example.com`) works too.
 - The Workers Paid plan, which Email Service sending requires.
 - Node.js 20+ and `npx wrangler login`.
 
@@ -17,7 +17,7 @@ Email Service. D1, R2 and Queues store the rest.
 
 ```bash
 npm install
-npm run setup -- --domain example.com --api api.example.com
+npm run setup -- --api api.example.com
 ```
 
 The setup command:
@@ -26,11 +26,11 @@ The setup command:
 - applies the database schema and deploys the Worker,
 - generates a new `ADMIN_KEY` and saves it to `.dev.vars` (gitignored), which `wrangler dev` also uses. Load it with `source .dev.vars`.
 
-Then, in the Cloudflare dashboard:
+Then, for each email domain, in the Cloudflare dashboard:
 
-1. **Email > Email Sending > Onboard Domain**, and choose your email domain. This adds the MX, SPF, DKIM and DMARC records.
+1. **Email > Email Sending > Onboard Domain**, and choose the domain. This adds the MX, SPF, DKIM and DMARC records.
 2. **Email > Email Routing**: if you use a subdomain, first add it under **apex domain > Settings > Subdomains**.
-3. In Email Routing's rules for your email domain, set the **catch-all** rule to **Send to a Worker > byagent-email**.
+3. In Email Routing's rules for the domain, set the **catch-all** rule to **Send to a Worker > byagent-email**.
 
 Enabling Email Routing replaces the domain's MX records, so use a domain (or subdomain) that doesn't already receive mail.
 
@@ -38,7 +38,6 @@ Enabling Email Routing replaces the domain's MX records, so use a domain (or sub
 
 | Name | Where | Default | |
 |---|---|---|---|
-| `DOMAIN` | `vars` in `wrangler.jsonc` | set by setup | Email domain for inboxes |
 | `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `0` | Received mail older than this many days is deleted daily. `0` keeps mail forever. |
 | `ADMIN_KEY` | Worker secret, plus `.dev.vars` locally | set by setup | Admin API key |
 
@@ -50,15 +49,17 @@ All admin calls use `Authorization: Bearer <ADMIN_KEY>`.
 
 ```bash
 # Create an inbox. The api_key and webhook_secret are shown only once.
-curl -X POST $URL/admin/inboxes -H "Authorization: Bearer $ADMIN_KEY" -d '{"name":"claude"}'
+curl -X POST $URL/admin/inboxes -H "Authorization: Bearer $ADMIN_KEY" -d '{"address":"claude@example.com"}'
 # → {"address":"claude@example.com","api_key":"…","webhook_secret":"…"}
 ```
 
 Keep the `webhook_secret` from inbox creation. It isn't shown again.
 
+Inboxes can be on any domain you've set up for this Worker (see Setup). The address isn't checked against your domains, so a typo creates an inbox that never receives mail. Delete it and create it again.
+
 | Method | Path | |
 |---|---|---|
-| `POST` | `/admin/inboxes` | `{name}` → `{address, api_key, webhook_secret}` |
+| `POST` | `/admin/inboxes` | `{address}` → `{address, api_key, webhook_secret}` |
 | `GET` | `/admin/inboxes` | List inboxes |
 | `DELETE` | `/admin/inboxes/:address` | Delete the inbox and all its mail |
 | `POST` | `/admin/inboxes/:address/rotate-key` | Returns a new `api_key` |

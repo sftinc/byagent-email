@@ -3,7 +3,6 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
   "vars": {
-    "DOMAIN": "email.example.com",
     "RETENTION_DAYS": "0" // days to keep received mail; "0" keeps it forever
   },
   "d1_databases": [

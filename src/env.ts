@@ -3,7 +3,6 @@ export interface Env {
   MAIL: R2Bucket;
   EMAIL: SendEmail;
   WEBHOOKS: Queue<WebhookJob>;
-  DOMAIN: string;
   RETENTION_DAYS: string;
   ADMIN_KEY: string;
 }

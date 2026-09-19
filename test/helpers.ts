@@ -31,7 +31,7 @@ export function api(
 }
 
 export async function createInbox(name = "agent") {
-  const res = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { name } });
+  const res = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { address: `${name}@email.example.com` } });
   return (await res.json()) as { address: string; api_key: string; webhook_secret: string };
 }
 

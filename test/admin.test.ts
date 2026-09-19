@@ -11,7 +11,7 @@ describe("admin", () => {
   });
 
   it("creates an inbox and returns its key once", async () => {
-    const res = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { name: "Claude" } });
+    const res = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { address: "Claude@Email.Example.com" } });
     expect(res.status).toBe(201);
     const body = (await res.json()) as { address: string; api_key: string; webhook_secret: string };
     expect(body.address).toBe("claude@email.example.com");
@@ -23,12 +23,20 @@ describe("admin", () => {
     expect(inboxes.map((i) => i.address)).toEqual(["claude@email.example.com"]);
   });
 
-  it("validates the name and refuses duplicates", async () => {
-    const bad = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { name: "no spaces" } });
-    expect(bad.status).toBe(400);
+  it("validates the address and refuses duplicates", async () => {
+    for (const address of ["claude", "no spaces@example.com", "claude@", "claude@nodot"]) {
+      const bad = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { address } });
+      expect(bad.status).toBe(400);
+    }
     await createInbox("claude");
-    const dup = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { name: "claude" } });
+    const dup = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { address: "claude@email.example.com" } });
     expect(dup.status).toBe(409);
+  });
+
+  it("creates inboxes on any domain", async () => {
+    const res = await api("/admin/inboxes", { method: "POST", key: ADMIN_KEY, body: { address: "bot@mail.other.org" } });
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { address: string }).address).toBe("bot@mail.other.org");
   });
 
   it("rotates a key so the old one stops working", async () => {

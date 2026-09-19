@@ -14,12 +14,12 @@ admin.use("*", async (c, next) => {
 });
 
 admin.post("/inboxes", async (c) => {
-  const body = await c.req.json<{ name?: unknown }>().catch(() => ({}) as { name?: unknown });
-  const name = typeof body.name === "string" ? body.name.toLowerCase() : "";
-  if (!/^[a-z0-9._-]{1,64}$/.test(name)) {
-    return c.json({ error: "`name` must be 1-64 characters of a-z 0-9 . _ -" }, 400);
+  const body = await c.req.json<{ address?: unknown }>().catch(() => ({}) as { address?: unknown });
+  const address = typeof body.address === "string" ? body.address.toLowerCase() : "";
+  // Any domain works, as long as it is set up for this Worker in Cloudflare (see README).
+  if (!/^[a-z0-9._-]{1,64}@[a-z0-9.-]+\.[a-z]{2,}$/.test(address)) {
+    return c.json({ error: "`address` must look like name@example.com (name: 1-64 of a-z 0-9 . _ -)" }, 400);
   }
-  const address = `${name}@${c.env.DOMAIN.toLowerCase()}`;
   const exists = await c.env.DB.prepare("SELECT 1 FROM inboxes WHERE address = ?").bind(address).first();
   if (exists) return c.json({ error: "Inbox already exists" }, 409);
 

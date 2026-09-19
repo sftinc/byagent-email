@@ -4,7 +4,6 @@
 import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 
 const NAME = "byagent-email";
@@ -19,20 +18,12 @@ const tryRun = (cmd) => {
   }
 };
 
-// npm run setup -- --domain example.com [--api api.example.com]
-const { values } = parseArgs({ options: { domain: { type: "string" }, api: { type: "string" } } });
+// npm run setup [-- --api api.example.com]
+// --api serves the API on that hostname (custom domain). Without it the Worker uses workers.dev.
+const { values } = parseArgs({ options: { api: { type: "string" } } });
 
 run("npx wrangler whoami"); // fails early when not logged in
 
-let domain = values.domain?.toLowerCase();
-if (!domain) {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  domain = (await rl.question("Email domain (e.g. example.com): ")).trim().toLowerCase();
-  rl.close();
-}
-if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) throw new Error(`Not a valid domain: ${domain}`);
-
-// Optional API hostname (custom domain). Without it the Worker is served on workers.dev.
 const apiHost = values.api?.toLowerCase();
 if (apiHost && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(apiHost)) throw new Error(`Not a valid hostname: ${apiHost}`);
 
@@ -43,10 +34,9 @@ tryRun(`npx wrangler queues create ${NAME}-webhooks`);
 const { uuid } = JSON.parse(run(`npx wrangler d1 info ${NAME} --json`));
 
 if (existsSync("wrangler.jsonc")) {
-  console.log("wrangler.jsonc already exists, leaving it as is (edit it to change the domain or API hostname).");
+  console.log("wrangler.jsonc already exists, leaving it as is (edit it to change the API hostname).");
 } else {
   const config = readFileSync("wrangler.example.jsonc", "utf8")
-    .replace("email.example.com", domain)
     .replace("REPLACE_WITH_D1_DATABASE_ID", uuid)
     .replace(
       '"vars": {',
@@ -68,8 +58,8 @@ writeFileSync(".dev.vars", [...env, `ADMIN_KEY=${adminKey}`, ""].join("\n"));
 console.log(`
 Done. ADMIN_KEY saved to .dev.vars (gitignored). Use it with: source .dev.vars
 
-Steps left, in the Cloudflare dashboard:
-  1. Email > Email Sending > Onboard Domain > ${domain}
-  2. If ${domain} is a subdomain: Email > Email Routing > (apex domain) > Settings > Subdomains: add ${domain}
-  3. Email Routing rules for ${domain}: set the catch-all rule to "Send to a Worker" > ${NAME}
+For each email domain, in the Cloudflare dashboard:
+  1. Email > Email Sending > Onboard Domain
+  2. If it is a subdomain: Email > Email Routing > (apex domain) > Settings > Subdomains: add it
+  3. Email Routing rules for the domain: set the catch-all rule to "Send to a Worker" > ${NAME}
 `);
