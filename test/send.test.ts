@@ -27,7 +27,7 @@ describe("buildEmail", () => {
         cc: ["b@x.com"],
         subject: "Hi",
         text: "Hello",
-        attachments: [{ filename: "a.txt", type: "text/plain", content: "aGk=", disposition: "attachment" }],
+        attachments: [{ filename: "a.txt", type: "text/plain", content: new Uint8Array([104, 105]), disposition: "attachment" }],
       },
     });
   });
@@ -39,6 +39,7 @@ describe("buildEmail", () => {
     [{ to: "a@x.com", text: "x" }, "`subject` is required"],
     [{ to: "a@x.com", subject: "Hi" }, "`text` or `html` is required"],
     [{ to: "a@x.com", subject: "Hi", text: "x", attachments: [{ filename: "a" }] }, "Attachments need `filename`, `type` and base64 `content`"],
+    [{ to: "a@x.com", subject: "Hi", text: "x", attachments: [{ filename: "a", type: "text/plain", content: "not base64!" }] }, "Attachment `content` must be valid base64"],
   ])("rejects %j", (body, error) => {
     expect(buildEmail(body, FROM)).toEqual({ ok: false, status: 400, error });
   });

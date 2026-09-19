@@ -53,13 +53,18 @@ export function buildEmail(body: any, from: string): Result {
   if (bcc.length) message.bcc = bcc;
   if (typeof body.text === "string") message.text = body.text;
   if (typeof body.html === "string") message.html = body.html;
-  if (attachments.length) {
-    message.attachments = attachments.map((a) => ({
-      filename: a.filename,
-      type: a.type,
-      content: a.content,
-      disposition: "attachment",
-    }));
+  // The send binding treats a string `content` as literal text, so decode base64 to bytes.
+  try {
+    if (attachments.length) {
+      message.attachments = attachments.map((a) => ({
+        filename: a.filename,
+        type: a.type,
+        content: Uint8Array.from(atob(a.content), (c) => c.charCodeAt(0)),
+        disposition: "attachment",
+      }));
+    }
+  } catch {
+    return { ok: false, status: 400, error: "Attachment `content` must be valid base64" };
   }
   return { ok: true, message };
 }
