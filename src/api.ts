@@ -30,8 +30,19 @@ const inboxAuth = createMiddleware<App>(async (c, next) => {
   await next();
 });
 
+// Unauthenticated, for uptime checks: 200 when the database answers, 503 when it doesn't.
+app.get("/health", async (c) => {
+  try {
+    await c.env.DB.prepare("SELECT 1").first();
+  } catch (err) {
+    console.error(err);
+    return c.json({ ok: false }, 503);
+  }
+  return c.json({ ok: true });
+});
+
 app.route("/admin", admin);
-app.use("*", except("/admin/*", inboxAuth));
+app.use("*", except(["/admin/*", "/health"], inboxAuth));
 
 // Lists messages 20 at a time, newest first. IDs are UUID v7, so they sort by creation time
 // with no ties. `paging.before` / `paging.after` are the ids to pass for older / newer mail.

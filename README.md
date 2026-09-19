@@ -109,6 +109,8 @@ Replies to replies keep the chain. Set `to` and the subject yourself, e.g. `Re: 
 
 A received message's `from` comes from its headers and isn't verified, so don't treat it as proof of who sent it.
 
+`GET /health` needs no key: it returns `{"ok":true}`, or a 503 if the database is unreachable.
+
 ## Webhooks
 
 When mail arrives, each of the inbox's webhooks gets a `POST`:
