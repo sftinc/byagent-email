@@ -23,6 +23,17 @@ describe("webhook endpoints", () => {
     const after = (await (await api("/webhooks", { key })).json()) as { webhooks: any[] };
     expect(after.webhooks).toEqual([{ id: b.id, url: "https://b.example/hook" }]);
   });
+
+  it("caps webhooks at 10 per inbox", async () => {
+    const { api_key: key } = await createInbox("agent");
+    for (let i = 0; i < 10; i++) {
+      const res = await api("/webhooks", { method: "POST", key, body: { url: `https://a${i}.example/hook` } });
+      expect(res.status).toBe(201);
+    }
+    const res = await api("/webhooks", { method: "POST", key, body: { url: "https://eleven.example/hook" } });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "At most 10 webhooks per inbox" });
+  });
 });
 
 describe("webhook delivery", () => {

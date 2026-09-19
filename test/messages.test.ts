@@ -33,6 +33,29 @@ describe("messages", () => {
     expect(since.messages).toEqual([]);
   });
 
+  it("orders since results oldest first, and the default newest first", async () => {
+    const inbox = await createInbox("agent");
+    await receive(eml({ subject: "A" }), inbox.address);
+    await receive(eml({ subject: "B" }), inbox.address);
+    await receive(eml({ subject: "C" }), inbox.address);
+    const rows = await env.DB.prepare("SELECT id, subject FROM messages").all<{ id: string; subject: string }>();
+    const byName = (subject: string) => rows.results.find((r) => r.subject === subject)!.id;
+    const [a, b, c] = [byName("A"), byName("B"), byName("C")];
+
+    const base = Date.now();
+    await env.DB.batch([
+      env.DB.prepare("UPDATE messages SET received_at = ? WHERE id = ?").bind(base, a),
+      env.DB.prepare("UPDATE messages SET received_at = ? WHERE id = ?").bind(base + 1000, b),
+      env.DB.prepare("UPDATE messages SET received_at = ? WHERE id = ?").bind(base + 2000, c),
+    ]);
+
+    const since = (await (await api(`/messages?since=${base}`, { key: inbox.api_key })).json()) as { messages: any[] };
+    expect(since.messages.map((m) => m.id)).toEqual([b, c]);
+
+    const all = (await (await api("/messages", { key: inbox.api_key })).json()) as { messages: any[] };
+    expect(all.messages.map((m) => m.id)).toEqual([c, b, a]);
+  });
+
   it("only shows an inbox its own messages", async () => {
     const { id } = await setup();
     const other = await createInbox("other");
@@ -63,7 +86,7 @@ describe("messages", () => {
     const res = await api(`/messages/${id}/attachments/0`, { key });
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("text/plain");
-    expect(res.headers.get("Content-Disposition")).toBe('attachment; filename="notes.txt"');
+    expect(res.headers.get("Content-Disposition")).toBe(`attachment; filename="notes.txt"; filename*=UTF-8''notes.txt`);
     expect(await res.text()).toBe("file body\n");
     expect((await api(`/messages/${id}/attachments/5`, { key })).status).toBe(404);
   });

@@ -42,7 +42,7 @@ app.get("/messages", async (c) => {
     sql += " AND received_at > ?";
     params.push(since);
   }
-  sql += " ORDER BY received_at DESC LIMIT 100";
+  sql += since > 0 ? " ORDER BY received_at ASC LIMIT 100" : " ORDER BY received_at DESC LIMIT 100";
   const { results } = await c.env.DB.prepare(sql).bind(...params).all<{ read: number }>();
   return c.json({ messages: results.map((m) => ({ ...m, read: m.read === 1 })) });
 });
@@ -67,11 +67,12 @@ app.get("/messages/:id/attachments/:index", async (c) => {
   const email = row && (await loadMessage(c.env, c.get("inbox"), id));
   const attachment = email?.attachments[Number(c.req.param("index"))];
   if (!attachment) return c.json({ error: "Attachment not found" }, 404);
-  const filename = (attachment.filename ?? "attachment").replace(/["\\\r\n]/g, "");
+  const filename = attachment.filename ?? "attachment";
+  const asciiSafe = filename.replace(/["\\\r\n]/g, "").replace(/[^\x00-\x7f]/g, "");
   return new Response(attachment.content, {
     headers: {
       "Content-Type": attachment.mimeType,
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": `attachment; filename="${asciiSafe}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
     },
   });
 });
@@ -102,6 +103,10 @@ app.post("/webhooks", async (c) => {
   const body = await c.req.json<{ url?: unknown }>().catch(() => ({}) as { url?: unknown });
   const url = typeof body.url === "string" && URL.canParse(body.url) ? new URL(body.url) : null;
   if (url?.protocol !== "https:") return c.json({ error: "`url` must be an https:// URL" }, 400);
+  const count = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM webhooks WHERE inbox = ?")
+    .bind(c.get("inbox"))
+    .first<{ n: number }>();
+  if ((count?.n ?? 0) >= 10) return c.json({ error: "At most 10 webhooks per inbox" }, 400);
   const id = crypto.randomUUID();
   await c.env.DB.prepare("INSERT INTO webhooks (id, inbox, url) VALUES (?, ?, ?)")
     .bind(id, c.get("inbox"), url.href)

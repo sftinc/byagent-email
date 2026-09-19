@@ -11,7 +11,7 @@ const run = (cmd, options = {}) => execSync(cmd, { encoding: "utf8", stdio: ["pi
 const runVisible = (cmd) => execSync(cmd, { stdio: "inherit" });
 const tryRun = (cmd) => {
   try {
-    return run(cmd, { stdio: "pipe" });
+    return run(cmd);
   } catch {
     return null; // usually "already exists"
   }
@@ -56,6 +56,6 @@ Done. Your ADMIN_KEY (shown only once, store it somewhere safe):
 
 Steps left, in the Cloudflare dashboard:
   1. Email > Email Sending > Onboard Domain > ${domain}
-  2. Email > Email Routing > (your apex domain) > Settings > Subdomains: add ${domain}
+  2. If ${domain} is a subdomain: Email > Email Routing > (apex domain) > Settings > Subdomains: add ${domain}
   3. Email Routing rules for ${domain}: set the catch-all rule to "Send to a Worker" > ${NAME}
 `);

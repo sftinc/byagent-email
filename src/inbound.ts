@@ -25,8 +25,12 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env): P
     .bind(inbox)
     .all<{ id: string }>();
   if (results.length > 0) {
-    await env.WEBHOOKS.sendBatch(
-      results.map((w) => ({ body: { webhookId: w.id, inbox, messageId: id } })),
-    );
+    try {
+      await env.WEBHOOKS.sendBatch(
+        results.map((w) => ({ body: { webhookId: w.id, inbox, messageId: id } })),
+      );
+    } catch (err) {
+      console.error(err);
+    }
   }
 }

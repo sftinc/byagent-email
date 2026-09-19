@@ -32,6 +32,8 @@ Then, in the Cloudflare dashboard:
 2. **Email > Email Routing**: if you use a subdomain, first add it under **apex domain > Settings > Subdomains**.
 3. In Email Routing's rules for your email domain, set the **catch-all** rule to **Send to a Worker > byagent-email**.
 
+Enabling Email Routing replaces the domain's MX records, so use a domain (or subdomain) that doesn't already receive mail.
+
 ### Configuration
 
 | Name | Where | Default | |
@@ -47,10 +49,12 @@ The API is served on the Worker's `workers.dev` URL. Add a custom domain in the 
 All admin calls use `Authorization: Bearer <ADMIN_KEY>`.
 
 ```bash
-# Create an inbox. The api_key is shown only once.
+# Create an inbox. The api_key and webhook_secret are shown only once.
 curl -X POST $URL/admin/inboxes -H "Authorization: Bearer $ADMIN_KEY" -d '{"name":"claude"}'
 # → {"address":"claude@example.com","api_key":"…","webhook_secret":"…"}
 ```
+
+Keep the `webhook_secret` from inbox creation. It isn't shown again.
 
 | Method | Path | |
 |---|---|---|
@@ -66,7 +70,7 @@ All agent calls use `Authorization: Bearer <api_key>`.
 | Method | Path | |
 |---|---|---|
 | `POST` | `/send` | `{to, cc?, bcc?, subject, text?, html?, attachments?: [{filename, type, content (base64)}]}` → `{messageId}` |
-| `GET` | `/messages?unread=true&since=<unix ms>` | List messages, newest first (max 100) |
+| `GET` | `/messages?unread=true&since=<unix ms>` | List messages (newest first; with `since`, oldest first so you can page forward). Max 100. |
 | `GET` | `/messages/:id` | Full message: text, html, attachment list |
 | `GET` | `/messages/:id/attachments/:index` | Download an attachment |
 | `POST` | `/messages/:id/read` | Mark read |
@@ -74,6 +78,8 @@ All agent calls use `Authorization: Bearer <api_key>`.
 | `GET` / `POST` / `DELETE` | `/webhooks[/:id]` | List, add (`{url}`, https only), remove |
 
 Send limits come from Cloudflare: 5 MiB per message, 32 attachments, 50 recipients.
+
+A received message's `from` comes from its headers and isn't verified, so don't treat it as proof of who sent it.
 
 ## Webhooks
 

@@ -45,11 +45,11 @@ admin.delete("/inboxes/:address", async (c) => {
   const exists = await c.env.DB.prepare("SELECT 1 FROM inboxes WHERE address = ?").bind(address).first();
   if (!exists) return c.json({ error: "Inbox not found" }, 404);
 
-  await purgeMessages(c.env, "inbox = ?", address);
   await c.env.DB.batch([
     c.env.DB.prepare("DELETE FROM webhooks WHERE inbox = ?").bind(address),
     c.env.DB.prepare("DELETE FROM inboxes WHERE address = ?").bind(address),
   ]);
+  await purgeMessages(c.env, "inbox = ?", address);
   return c.json({ ok: true });
 });
 

@@ -28,6 +28,7 @@ export async function deliverWebhook(job: WebhookJob, env: Env): Promise<boolean
       body,
       signal: AbortSignal.timeout(10_000),
     });
+    await res.body?.cancel();
     return res.ok;
   } catch {
     return false;
