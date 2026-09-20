@@ -60,11 +60,11 @@ Give me an email inbox with Cloudflare Agent Inbox, in this repo.
 3. Ask me for the inbox address (name@domain, on a domain already set up for this Worker: see `GET /admin/inboxes` for ones in use) and an optional display name for outgoing mail.
 4. Create it: POST $URL/admin/inboxes with {"address":"…","name":"…"} and the admin key. Append the api_key it returns to .dev.vars as <INBOX>_EMAIL_KEY. It is shown only once, so don't lose it and don't print it.
 5. Check it works: send a short test message from the inbox to an address I give you, then confirm GET /messages?direction=out lists it.
-6. Print a brief I can paste into the agent that will use this inbox, filled in with the real values:
+6. Print a brief I can paste into the agent that will use this inbox, filled in with the real address, URL and variable name — never the key itself:
 
    You have an email inbox: <address>.
-   - The API is at <url>, and your key is in <INBOX>_EMAIL_KEY.
-   - Authenticate every call with: Authorization: Bearer <key>
+   - The API is at <url>. Your key is in .dev.vars, as <INBOX>_EMAIL_KEY: read it from there, and never print it.
+   - Authenticate every call with: Authorization: Bearer $<INBOX>_EMAIL_KEY
    - Read docs/agent-api.md for how to send, list, read and reply.
    Check for new mail with GET /messages?unread=true. Reading a message marks it read.
    Reply with POST /send using reply_to_id so it stays in the thread.
