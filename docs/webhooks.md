@@ -68,3 +68,17 @@ A 2xx response means delivered. Anything else, or a timeout after 10 seconds, is
 is still in the inbox for polling.
 
 Deliveries for a message or webhook that is deleted before they go out are skipped.
+
+## Seeing what happened
+
+Every attempt is logged, delivered or not, with the webhook id, the message id, the attempt number,
+and either the HTTP status or — when the request got no response at all — the reason it didn't. A
+skipped delivery is logged too, so a webhook that never fired is distinguishable from one that fired
+and failed. Read them in the dashboard under the Worker's **Observability**, or live with
+`npx wrangler tail`.
+
+This needs `"observability"` enabled in `wrangler.jsonc`, which it is by default. With it off,
+nothing is stored and the logs only exist while a `wrangler tail` is attached — which is no use for
+a retry that fails four minutes after the mail arrived. Logs are kept 3 days on the free plan, 7 on
+paid. Leave `head_sampling_rate` at `1`: it samples whole invocations, so a lower rate discards
+entire deliveries, errors included.

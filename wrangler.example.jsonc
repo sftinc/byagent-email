@@ -2,6 +2,9 @@
   "name": "agent-inbox",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
+  // Stores logs for 3 days (free) or 7 (paid), so a webhook that failed unattended can still be
+  // read afterwards. Sampling applies per invocation, so keep the rate at 1 or lose whole deliveries.
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
   "vars": {
     "RETENTION_DAYS": "0" // days to keep received mail; "0" keeps it forever
   },

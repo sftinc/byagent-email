@@ -6,7 +6,10 @@ import { handleQueue } from "../src/webhooks";
 import { api, createInbox, eml, receive, reset } from "./helpers";
 
 beforeEach(reset);
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("webhook endpoints", () => {
   it("adds, lists and removes webhooks", async () => {
@@ -166,5 +169,66 @@ describe("webhook delivery", () => {
     await handleQueue(batch, env);
     expect((await getQueueResult(batch, ctx)).explicitAcks).toEqual(["job-1"]);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it.each([200, 500])("logs the attempt and its status when the receiver answers %i", async (status) => {
+    const { hook, messageId, batch } = await setup();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("body", { status })));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleQueue(batch, env);
+
+    expect(log).toHaveBeenCalledWith({
+      event: "webhook_delivery",
+      webhookId: hook.id,
+      messageId,
+      url: "https://agent.example/hook",
+      attempt: 1,
+      status,
+      error: null,
+    });
+  });
+
+  it("logs the reason when the delivery never gets a response", async () => {
+    const { batch } = await setup();
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new TypeError("connection refused");
+    }));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleQueue(batch, env);
+
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ status: null, error: expect.stringContaining("connection refused") }),
+    );
+  });
+
+  it("logs the attempt number, so a give-up is visible", async () => {
+    const { batch: first } = await setup();
+    const { messageId, webhookId } = first.messages[0].body as { messageId: string; webhookId: string };
+    const batch = createMessageBatch("agent-inbox-webhooks", [
+      { id: "job-1", timestamp: Date.now(), attempts: 5, body: { webhookId, messageId } },
+    ]);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 503 })));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleQueue(batch, env);
+
+    expect(log).toHaveBeenCalledWith(expect.objectContaining({ attempt: 5, status: 503 }));
+  });
+
+  it("logs a skip when the message was deleted before the delivery went out", async () => {
+    const { inbox, hook, messageId, batch } = await setup();
+    await api(`/messages/${messageId}`, { method: "DELETE", key: inbox.api_key });
+    vi.stubGlobal("fetch", vi.fn());
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleQueue(batch, env);
+
+    expect(log).toHaveBeenCalledWith({
+      event: "webhook_skipped",
+      webhookId: hook.id,
+      messageId,
+      attempt: 1,
+    });
   });
 });

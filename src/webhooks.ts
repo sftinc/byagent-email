@@ -3,7 +3,9 @@ import type { Env, WebhookJob } from "./env";
 import { loadMessage } from "./mail";
 
 // Returns true when the job is finished (delivered, or nothing left to deliver).
-export async function deliverWebhook(job: WebhookJob, env: Env): Promise<boolean> {
+// Logs every attempt, so a delivery that fails unattended leaves a trace. Needs `observability`
+// on in the Worker config to be readable later; without it these only show in `wrangler tail`.
+export async function deliverWebhook(job: WebhookJob, env: Env, attempt: number): Promise<boolean> {
   // Skips the job when the webhook or the message has been deleted since it was queued.
   const hook = await env.DB.prepare(
     `SELECT w.url, w.secret, w.inbox_id, i.address FROM webhooks w
@@ -14,13 +16,28 @@ export async function deliverWebhook(job: WebhookJob, env: Env): Promise<boolean
     .bind(job.messageId, job.webhookId)
     .first<{ url: string; secret: string; inbox_id: string; address: string }>();
   const stored = hook && (await loadMessage(env, hook.inbox_id, job.messageId));
-  if (!hook || !stored) return true;
+  if (!hook || !stored) {
+    console.log({ event: "webhook_skipped", webhookId: job.webhookId, messageId: job.messageId, attempt });
+    return true;
+  }
 
   const { html, cc, bcc, headers, attachments, ...rest } = stored;
   const message = { id: job.messageId, ...rest, attachments: attachments.map((a, index) => ({ index, ...a })) };
   const body = JSON.stringify({ inbox: hook.address, message });
   const timestamp = String(Date.now());
   const signature = await hmacSha256(hook.secret, `${timestamp}.${body}`);
+
+  // Exactly one of status and error is set: a null status means the request got no response at all.
+  const log = (status: number | null, error: string | null) =>
+    console.log({
+      event: "webhook_delivery",
+      webhookId: job.webhookId,
+      messageId: job.messageId,
+      url: hook.url,
+      attempt,
+      status,
+      error,
+    });
 
   try {
     const res = await fetch(hook.url, {
@@ -34,15 +51,17 @@ export async function deliverWebhook(job: WebhookJob, env: Env): Promise<boolean
       signal: AbortSignal.timeout(10_000),
     });
     await res.body?.cancel();
+    log(res.status, null);
     return res.ok;
-  } catch {
+  } catch (err) {
+    log(null, String(err).slice(0, 200));
     return false;
   }
 }
 
 export async function handleQueue(batch: MessageBatch<WebhookJob>, env: Env): Promise<void> {
   for (const msg of batch.messages) {
-    if (await deliverWebhook(msg.body, env)) msg.ack();
+    if (await deliverWebhook(msg.body, env, msg.attempts)) msg.ack();
     else msg.retry({ delaySeconds: 30 * 2 ** (msg.attempts - 1) });
   }
 }
