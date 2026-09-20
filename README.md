@@ -24,13 +24,63 @@ Email Service. D1, R2 and Queues store the rest.
 
 ## Setup
 
-```bash
-npm install
-npm run setup api.example.com     # hostname optional; without it you get a workers.dev URL
-```
+You need a domain on Cloudflare DNS (a subdomain like `mail.example.com` works too), the
+Workers Paid plan, which Email Service sending requires, and Node.js 20+.
 
-Then point each email domain at the Worker in the Cloudflare dashboard. Both steps are in
-[Setup](docs/setup.md). Or paste this into a coding agent such as Claude Code:
+1. **Clone and install.**
+
+   ```bash
+   git clone https://github.com/sftinc/cfloudflare-agent-inbox
+   cd cfloudflare-agent-inbox
+   npm install
+   ```
+
+2. **Log in to Cloudflare.**
+
+   ```bash
+   npx wrangler login
+   ```
+
+3. **Deploy.** The hostname is optional; without it the API is served on a `workers.dev` URL.
+
+   ```bash
+   npm run setup api.example.com
+   ```
+
+   This creates the D1 database, R2 bucket and queue, applies the schema, deploys the Worker,
+   and writes `ADMIN_KEY` and `API_URL` to `.dev.vars` (gitignored). It's safe to re-run.
+
+4. **Point each email domain at the Worker**, in the Cloudflare dashboard:
+
+   - **Email > Email Sending > Onboard Domain**, and choose the domain.
+   - Using a subdomain? Add it first under **apex domain > Settings > Subdomains**.
+   - In **Email Routing**'s rules for the domain, set the **catch-all** rule to
+     **Send to a Worker > agent-inbox**.
+
+   Email Routing replaces the domain's MX records, so use one that doesn't already receive mail.
+
+5. **Create the first inbox.**
+
+   ```bash
+   source .dev.vars
+   curl -X POST $API_URL/admin/inboxes -H "Authorization: Bearer $ADMIN_KEY" \
+     -d '{"address":"claude@example.com","name":"Claude"}'
+   ```
+
+   The `api_key` it returns is shown only once. That's what the agent authenticates with.
+
+6. **Check it works.** Send yourself a message, reply to it from your own mail, then confirm
+   the reply arrives.
+
+   ```bash
+   export API_KEY=…          # the api_key from step 5
+   curl -X POST $API_URL/send -H "Authorization: Bearer $API_KEY" \
+     -d '{"to":"you@example.com","subject":"Hello","text":"Testing."}'
+   curl "$API_URL/messages?unread=true" -H "Authorization: Bearer $API_KEY"
+   ```
+
+The details — what setup writes, re-running it, `RETENTION_DAYS`, changing the API hostname —
+are in [Setup](docs/setup.md). Or have a coding agent such as Claude Code do all of it:
 
 ```text
 Set up Cloudflare Agent Inbox for me: https://github.com/sftinc/cfloudflare-agent-inbox
