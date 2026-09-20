@@ -1,6 +1,7 @@
 import type { Address, Email } from "postal-mime";
 import { uuidv7 } from "./crypto";
 import type { Env, Inbox } from "./env";
+import { addressOf } from "./send";
 
 // Every message is stored under its own prefix: `message.json` plus one file per attachment,
 // named by its position. Mail is parsed once, when it arrives, and never re-parsed on read.
@@ -105,8 +106,11 @@ export function loadAttachment(env: Env, inboxId: string, id: string, index: num
 // Sent mail is stored the same way, built from what was sent rather than from a parsed email.
 export async function saveSent(env: Env, inbox: Inbox, message: EmailMessageBuilder, messageId: string): Promise<string> {
   const id = uuidv7();
-  const [to, cc, bcc] = [message.to, message.cc, message.bcc].map((list) => (list ?? []) as string[]);
-  const named = (address: string): Contact => ({ name: "", address });
+  const [to, cc, bcc] = [message.to, message.cc, message.bcc].map(
+    (list) => (list ?? []) as (string | EmailAddress)[],
+  );
+  const named = (r: string | EmailAddress): Contact =>
+    typeof r === "string" ? { name: "", address: r } : { name: r.name, address: r.email };
   const files = (message.attachments ?? []).map((a) => a.content as Uint8Array);
   const now = Date.now();
   const stored: StoredMessage = {
@@ -141,7 +145,7 @@ export async function saveSent(env: Env, inbox: Inbox, message: EmailMessageBuil
       inbox.id,
       inbox.address,
       inbox.name ?? "",
-      [...to, ...cc, ...bcc].join(",").toLowerCase(),
+      [...to, ...cc, ...bcc].map(addressOf).join(",").toLowerCase(),
       message.subject,
       JSON.stringify(stored.attachments),
       now,

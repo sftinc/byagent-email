@@ -35,14 +35,16 @@ curl -X POST $URL/send -H "Authorization: Bearer $API_KEY" -d '{
 
 | Field | |
 |---|---|
-| `to` | required, a string or a list of addresses |
+| `to` | required: an address, or a list of them. Each is `"bob@x.com"` or `{"address":"bob@x.com","name":"Bob"}` |
 | `cc`, `bcc` | optional, same shape |
 | `subject` | required |
 | `text`, `html` | at least one; sending both lets the recipient's client choose |
 | `attachments` | optional, see below |
 | `reply_to_id` | optional, see below |
 
-The sender is always the inbox, as `Name <address>` when the inbox has a name. `id` is the saved copy,
+A named recipient goes out as `Bob <bob@x.com>`, and the name is kept on the saved copy. Searching by
+`to` still matches addresses only. The sender is always the inbox, as `Name <address>` when the inbox
+has a name. `id` is the saved copy,
 which works with every `/messages/:id` route; `messageId` is the email's `Message-ID` header.
 
 Limits: 5 MiB per message, 32 attachments, 50 recipients. Over the size limit returns 413; a rejected

@@ -76,6 +76,24 @@ describe("sent mail", () => {
     expect(await file.text()).toBe("hi");
   });
 
+  it("keeps recipient names on the saved copy, and filters by address", async () => {
+    const inbox = await createInbox("agent");
+    const body = {
+      to: [{ address: "Bob@x.com", name: "Bob Smith" }],
+      cc: "plain@x.com",
+      subject: "Named",
+      text: "Hi",
+    };
+    const res = await api("/send", { method: "POST", key: inbox.api_key, body }, { EMAIL });
+    const { id } = (await res.json()) as { id: string };
+
+    const full = (await (await api(`/messages/${id}`, { key: inbox.api_key })).json()) as any;
+    expect(full.to).toEqual([{ name: "Bob Smith", address: "Bob@x.com" }]);
+    expect(full.cc).toEqual([{ name: "", address: "plain@x.com" }]);
+    expect((await list(inbox.api_key, "?direction=out"))[0].recipients).toEqual(["bob@x.com", "plain@x.com"]);
+    expect((await list(inbox.api_key, "?direction=out&to=BOB@")).map((m: any) => m.id)).toEqual([id]);
+  });
+
   it("lists both directions with direction=all and filters by recipient", async () => {
     const inbox = await createInbox("agent");
     await receive(eml({ to: "agent@email.example.com" }), inbox.address);

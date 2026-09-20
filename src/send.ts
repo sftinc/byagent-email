@@ -2,6 +2,8 @@ const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_RECIPIENTS = 50;
 const MAX_ATTACHMENTS = 32;
 
+import { parseName } from "./validate";
+
 type Result = { ok: true; message: EmailMessageBuilder } | { ok: false; status: 400 | 413; error: string };
 
 function list(value: unknown): any[] {
@@ -9,19 +11,36 @@ function list(value: unknown): any[] {
   return Array.isArray(value) ? value : [value];
 }
 
-function isStringList(value: unknown[]): value is string[] {
-  return value.every((v) => typeof v === "string" && v.length > 0);
+// A recipient is "bob@x.com" or {address, name?}. Returns what the send binding takes: a plain
+// address, or {email, name} when it has a display name. null if any entry is malformed.
+function recipients(values: unknown[]): (string | EmailAddress)[] | null {
+  const out: (string | EmailAddress)[] = [];
+  for (const value of values) {
+    if (typeof value === "string" && value.length > 0) {
+      out.push(value);
+      continue;
+    }
+    const { address, name } = (value ?? {}) as { address?: unknown; name?: unknown };
+    const label = parseName(name);
+    if (typeof address !== "string" || address.length === 0 || label === undefined) return null;
+    out.push(label ? { email: address, name: label } : address);
+  }
+  return out;
+}
+
+export function addressOf(recipient: string | EmailAddress): string {
+  return typeof recipient === "string" ? recipient : recipient.email;
 }
 
 // Validates an agent's POST /send body and turns it into an Email Service message from `from`.
 export function buildEmail(body: any, from: string | EmailAddress): Result {
   if (!body || typeof body !== "object") return { ok: false, status: 400, error: "Body must be a JSON object" };
 
-  const to = list(body.to);
-  const cc = list(body.cc);
-  const bcc = list(body.bcc);
+  const [to, cc, bcc] = [body.to, body.cc, body.bcc].map((value) => recipients(list(value)));
+  if (!to || !cc || !bcc) {
+    return { ok: false, status: 400, error: "Recipients must be addresses or {address, name}" };
+  }
   if (to.length === 0) return { ok: false, status: 400, error: "`to` is required" };
-  if (![to, cc, bcc].every(isStringList)) return { ok: false, status: 400, error: "Recipients must be email strings" };
   if (to.length + cc.length + bcc.length > MAX_RECIPIENTS) {
     return { ok: false, status: 400, error: `At most ${MAX_RECIPIENTS} recipients` };
   }

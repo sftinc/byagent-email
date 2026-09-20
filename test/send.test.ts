@@ -35,13 +35,31 @@ describe("buildEmail", () => {
   it.each([
     [null, "Body must be a JSON object"],
     [{ subject: "Hi", text: "x" }, "`to` is required"],
-    [{ to: [1], subject: "Hi", text: "x" }, "Recipients must be email strings"],
+    [{ to: [1], subject: "Hi", text: "x" }, "Recipients must be addresses or {address, name}"],
+    [{ to: [{ name: "No address" }], subject: "Hi", text: "x" }, "Recipients must be addresses or {address, name}"],
+    [{ to: [{ address: "a@x.com", name: "Bad\nName" }], subject: "Hi", text: "x" }, "Recipients must be addresses or {address, name}"],
     [{ to: "a@x.com", text: "x" }, "`subject` is required"],
     [{ to: "a@x.com", subject: "Hi" }, "`text` or `html` is required"],
     [{ to: "a@x.com", subject: "Hi", text: "x", attachments: [{ filename: "a" }] }, "Attachments need `filename`, `type` and base64 `content`"],
     [{ to: "a@x.com", subject: "Hi", text: "x", attachments: [{ filename: "a", type: "text/plain", content: "not base64!" }] }, "Attachment `content` must be valid base64"],
   ])("rejects %j", (body, error) => {
     expect(buildEmail(body, FROM)).toEqual({ ok: false, status: 400, error });
+  });
+
+  it("takes recipients as addresses or {address, name}", () => {
+    const result = buildEmail(
+      {
+        to: ["plain@x.com", { address: "named@x.com", name: " Bob Smith " }],
+        cc: { address: "cc@x.com", name: "" },
+        subject: "Hi",
+        text: "Hello",
+      },
+      FROM,
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      message: { to: ["plain@x.com", { email: "named@x.com", name: "Bob Smith" }], cc: ["cc@x.com"] },
+    });
   });
 
   it("enforces the platform limits", () => {

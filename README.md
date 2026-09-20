@@ -71,7 +71,7 @@ Admin calls use `ADMIN_KEY`; agent calls use an inbox's `api_key`.
 
 | Method | Path | |
 |---|---|---|
-| `POST` | `/send` | Send mail, optionally as a threaded reply |
+| `POST` | `/send` | Send mail, to named or plain addresses, optionally as a threaded reply |
 | `GET` | `/messages` | List, filter and page through mail |
 | `GET` | `/messages/:id` | Read one in full; marks it read |
 | `GET` | `/messages/:id/attachments/:index` | Download an attachment |
