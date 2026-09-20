@@ -193,7 +193,7 @@ const TOO_MANY = "At most 10 webhooks per inbox";
 app.get("/webhooks", async (c) => {
   const deleted = c.req.query("deleted") === "true";
   const { results } = await c.env.DB.prepare(
-    `SELECT id, name, url${deleted ? ", deleted_at" : ""} FROM webhooks WHERE inbox_id = ? AND deleted_at IS ${deleted ? "NOT NULL" : "NULL"}`,
+    `SELECT id, name, url, succeeded_at, failed_at${deleted ? ", deleted_at" : ""} FROM webhooks WHERE inbox_id = ? AND deleted_at IS ${deleted ? "NOT NULL" : "NULL"}`,
   )
     .bind(c.get("inbox").id)
     .all();

@@ -15,17 +15,19 @@ CREATE TABLE inboxes (
 );
 
 CREATE TABLE webhooks (
-  id         TEXT PRIMARY KEY,
-  inbox_id   TEXT NOT NULL REFERENCES inboxes(id) ON DELETE CASCADE,
+  id           TEXT PRIMARY KEY,
+  inbox_id     TEXT NOT NULL REFERENCES inboxes(id) ON DELETE CASCADE,
   -- target
-  name       TEXT,              -- optional label, so a list says what each webhook is for
-  url        TEXT NOT NULL,
+  name         TEXT,              -- optional label, so a list says what each webhook is for
+  url          TEXT NOT NULL,
   -- auth
-  secret     TEXT NOT NULL,     -- signs this webhook's deliveries; never sent, only its HMAC
-  bearer     TEXT,              -- sent verbatim as `Authorization: Bearer ...` when set
+  secret       TEXT NOT NULL,     -- signs this webhook's deliveries; never sent, only its HMAC
+  bearer       TEXT,              -- sent verbatim as `Authorization: Bearer ...` when set
   -- dates
-  created_at INTEGER NOT NULL,
-  deleted_at INTEGER
+  created_at   INTEGER NOT NULL,
+  succeeded_at INTEGER,           -- last delivery the receiver accepted
+  failed_at    INTEGER,           -- last delivery it didn't; compare the two for health
+  deleted_at   INTEGER
 );
 
 CREATE TABLE messages (

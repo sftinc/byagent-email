@@ -33,10 +33,19 @@ describe("webhook endpoints", () => {
     expect((await api(`/webhooks/${a.id}`, { method: "DELETE", key })).status).toBe(200);
     expect((await api(`/webhooks/${a.id}`, { method: "DELETE", key })).status).toBe(404);
     const after = (await (await api("/webhooks", { key })).json()) as { webhooks: any[] };
-    expect(after.webhooks).toEqual([{ id: b.id, name: null, url: "https://b.example/hook" }]);
+    expect(after.webhooks).toEqual([
+      { id: b.id, name: null, url: "https://b.example/hook", succeeded_at: null, failed_at: null },
+    ]);
     const deleted = (await (await api("/webhooks?deleted=true", { key })).json()) as { webhooks: any[] };
     expect(deleted.webhooks).toEqual([
-      { id: a.id, name: "Ops alerts", url: "https://a.example/hook", deleted_at: expect.any(Number) },
+      {
+        id: a.id,
+        name: "Ops alerts",
+        url: "https://a.example/hook",
+        succeeded_at: null,
+        failed_at: null,
+        deleted_at: expect.any(Number),
+      },
     ]);
   });
 
@@ -80,6 +89,13 @@ describe("webhook endpoints", () => {
     expect(JSON.stringify(created)).not.toContain(bearer);
     const listed = await (await api("/webhooks", { key })).json();
     expect(JSON.stringify(listed)).not.toContain(bearer);
+  });
+
+  it("lists when each webhook last succeeded and last failed", async () => {
+    const { api_key: key } = await createInbox("agent");
+    await api("/webhooks", { method: "POST", key, body: { url: "https://a.example/hook" } });
+    const { webhooks } = (await (await api("/webhooks", { key })).json()) as { webhooks: Record<string, unknown>[] };
+    expect(webhooks[0]).toMatchObject({ succeeded_at: null, failed_at: null });
   });
 
   it("caps webhooks at 10 per inbox", async () => {
@@ -260,5 +276,45 @@ describe("webhook delivery", () => {
     await handleQueue(batch, env);
 
     expect(JSON.stringify(log.mock.calls)).not.toContain(bearer);
+  });
+  async function stamps(id: string) {
+    return await env.DB.prepare("SELECT succeeded_at, failed_at FROM webhooks WHERE id = ?")
+      .bind(id)
+      .first<{ succeeded_at: number | null; failed_at: number | null }>();
+  }
+
+  it("stamps succeeded_at when the receiver accepts the delivery", async () => {
+    const { hook, batch } = await setup();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("ok")));
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleQueue(batch, env);
+
+    const row = await stamps(hook.id);
+    expect(row!.succeeded_at).toEqual(expect.any(Number));
+    expect(row!.failed_at).toBeNull();
+  });
+
+  it("stamps failed_at when the receiver rejects the delivery", async () => {
+    const { hook, batch } = await setup();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 401 })));
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleQueue(batch, env);
+
+    const row = await stamps(hook.id);
+    expect(row!.failed_at).toEqual(expect.any(Number));
+    expect(row!.succeeded_at).toBeNull();
+  });
+
+  it("stamps neither when the delivery is skipped", async () => {
+    const { inbox, hook, messageId, batch } = await setup();
+    await api(`/messages/${messageId}`, { method: "DELETE", key: inbox.api_key });
+    vi.stubGlobal("fetch", vi.fn());
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleQueue(batch, env);
+
+    expect(await stamps(hook.id)).toEqual({ succeeded_at: null, failed_at: null });
   });
 });

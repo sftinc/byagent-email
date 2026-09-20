@@ -22,7 +22,7 @@ curl -X POST $URL/webhooks -H "Authorization: Bearer $API_KEY" \
 - Up to 10 webhooks per inbox. To change a secret or a bearer, delete the webhook and add it again.
 
 ```bash
-curl $URL/webhooks -H "Authorization: Bearer $API_KEY"   # list: id, name, url (no secrets)
+curl $URL/webhooks -H "Authorization: Bearer $API_KEY"   # list: id, name, url, succeeded_at, failed_at
 curl -X DELETE $URL/webhooks/01a0… -H "Authorization: Bearer $API_KEY"
 curl -X POST $URL/webhooks/01a0…/restore -H "Authorization: Bearer $API_KEY"
 ```
@@ -77,6 +77,12 @@ and either the HTTP status or — when the request got no response at all — th
 skipped delivery is logged too, so a webhook that never fired is distinguishable from one that fired
 and failed. Read them in the dashboard under the Worker's **Observability**, or live with
 `npx wrangler tail`.
+
+`GET /webhooks` also carries `succeeded_at` and `failed_at`, the last time each webhook delivered
+and the last time it didn't. They outlive the logs, so they answer "is this webhook working?" long
+after the detail has aged out: `failed_at` newer than `succeeded_at` means it is broken now, and a
+`failed_at` with no `succeeded_at` means it has never once worked. They say when, never why — the
+logs below are where the status code and the reason live.
 
 This needs `"observability"` enabled in `wrangler.jsonc`, which it is by default. With it off,
 nothing is stored and the logs only exist while a `wrangler tail` is attached — which is no use for

@@ -48,6 +48,16 @@ export async function deliverWebhook(job: WebhookJob, env: Env, attempt: number)
   };
   if (hook.bearer) requestHeaders.Authorization = `Bearer ${hook.bearer}`;
 
+  // Bookkeeping, so a webhook's health outlives the logs. It must never change the outcome:
+  // a failed write here would otherwise turn a delivered webhook into a retry.
+  const stamp = async (column: "succeeded_at" | "failed_at") => {
+    try {
+      await env.DB.prepare(`UPDATE webhooks SET ${column} = ? WHERE id = ?`).bind(Date.now(), job.webhookId).run();
+    } catch (err) {
+      console.log({ event: "webhook_stamp_failed", webhookId: job.webhookId, error: String(err).slice(0, 200) });
+    }
+  };
+
   try {
     const res = await fetch(hook.url, {
       method: "POST",
@@ -57,9 +67,11 @@ export async function deliverWebhook(job: WebhookJob, env: Env, attempt: number)
     });
     await res.body?.cancel();
     log(res.status, null);
+    await stamp(res.ok ? "succeeded_at" : "failed_at");
     return res.ok;
   } catch (err) {
     log(null, String(err).slice(0, 200));
+    await stamp("failed_at");
     return false;
   }
 }
