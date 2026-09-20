@@ -61,8 +61,8 @@ Set up Cloudflare Agent Inbox for me: https://github.com/sftinc/cfloudflare-agen
    domain(s) will receive mail. Walk me through the dashboard steps for each domain,
    and wait until I say they're done.
 
-3. Tell me the API URL when you're done. It is in .dev.vars as API_URL, along with
-   ADMIN_KEY — never print or commit either.
+3. When you're done, tell me the API URL and give me a link to .dev.vars, which holds
+   it as API_URL along with ADMIN_KEY. Never commit that file.
 ```
 
 ## Give an agent an inbox
