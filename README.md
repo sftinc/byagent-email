@@ -22,103 +22,73 @@ Email Service. D1, R2 and Queues store the rest.
 | [Webhooks](docs/webhooks.md) | Push instead of polling, payload and signature |
 | [Concepts](docs/concepts.md) | IDs, timestamps, deleting and purging, storage, limits |
 
-## Setup
+## Deploy the Worker
 
 You need a domain on Cloudflare DNS (a subdomain like `mail.example.com` works too), the
 Workers Paid plan, which Email Service sending requires, and Node.js 20+.
 
-1. **Clone and install.**
+```bash
+git clone https://github.com/sftinc/cfloudflare-agent-inbox
+cd cfloudflare-agent-inbox && npm install
+npx wrangler login
+npm run setup api.example.com     # hostname optional; without it you get a workers.dev URL
+```
 
-   ```bash
-   git clone https://github.com/sftinc/cfloudflare-agent-inbox
-   cd cfloudflare-agent-inbox
-   npm install
-   ```
+Setup creates the D1 database, R2 bucket and queue, deploys the Worker, and writes `ADMIN_KEY`
+and `API_URL` to `.dev.vars` (gitignored). It's safe to re-run.
 
-2. **Log in to Cloudflare.**
+Then point each email domain at the Worker, in the Cloudflare dashboard:
 
-   ```bash
-   npx wrangler login
-   ```
+- **Email > Email Sending > Onboard Domain**, and choose the domain.
+- Using a subdomain? Add it first under **apex domain > Settings > Subdomains**.
+- In **Email Routing**'s rules for the domain, set the **catch-all** rule to
+  **Send to a Worker > agent-inbox**.
 
-3. **Deploy.** The hostname is optional; without it the API is served on a `workers.dev` URL.
+Email Routing replaces the domain's MX records, so use one that doesn't already receive mail.
+The rest — re-running setup, `RETENTION_DAYS`, changing the API hostname — is in
+[Setup](docs/setup.md).
 
-   ```bash
-   npm run setup api.example.com
-   ```
+## Deploy it with an agent
 
-   This creates the D1 database, R2 bucket and queue, applies the schema, deploys the Worker,
-   and writes `ADMIN_KEY` and `API_URL` to `.dev.vars` (gitignored). It's safe to re-run.
-
-4. **Point each email domain at the Worker**, in the Cloudflare dashboard:
-
-   - **Email > Email Sending > Onboard Domain**, and choose the domain.
-   - Using a subdomain? Add it first under **apex domain > Settings > Subdomains**.
-   - In **Email Routing**'s rules for the domain, set the **catch-all** rule to
-     **Send to a Worker > agent-inbox**.
-
-   Email Routing replaces the domain's MX records, so use one that doesn't already receive mail.
-
-5. **Create the first inbox.**
-
-   ```bash
-   source .dev.vars
-   curl -X POST $API_URL/admin/inboxes -H "Authorization: Bearer $ADMIN_KEY" \
-     -d '{"address":"claude@example.com","name":"Claude"}'
-   ```
-
-   The `api_key` it returns is shown only once. That's what the agent authenticates with.
-
-6. **Check it works.** Send yourself a message, reply to it from your own mail, then confirm
-   the reply arrives.
-
-   ```bash
-   export API_KEY=…          # the api_key from step 5
-   curl -X POST $API_URL/send -H "Authorization: Bearer $API_KEY" \
-     -d '{"to":"you@example.com","subject":"Hello","text":"Testing."}'
-   curl "$API_URL/messages?unread=true" -H "Authorization: Bearer $API_KEY"
-   ```
-
-The details — what setup writes, re-running it, `RETENTION_DAYS`, changing the API hostname —
-are in [Setup](docs/setup.md). Or have a coding agent such as Claude Code do all of it:
+Or have a coding agent such as Claude Code do all of the above. Paste this:
 
 ```text
 Set up Cloudflare Agent Inbox for me: https://github.com/sftinc/cfloudflare-agent-inbox
 
-1. Clone the repo and read its README and docs/setup.md.
-2. Ask me whether I want the API on a custom hostname (e.g. api.example.com).
-3. Check that I'm logged in with `npx wrangler whoami`. If not, ask me to run `npx wrangler login`.
-4. Run `npm install`, then `npm run setup` (add the hostname if I gave one: `npm run setup api.example.com`).
-5. Ask me which domain(s) to receive mail on. Walk me through the dashboard steps for each one, and wait until I say they're done.
-6. Ask me what to call the first inbox, then create it with the admin API, using ADMIN_KEY from .dev.vars. Save its api_key to .dev.vars.
-7. Send a test email from the inbox to an address I give you. Ask me to reply, then check that the reply shows up in GET /messages.
-8. Finish by telling me the API URL (also saved in .dev.vars as API_URL), the inbox address, where its key is saved, and that agents using it should read docs/agent-api.md.
+1. Clone it and follow docs/setup.md.
 
-Never print or commit any keys.
+2. Ask me what you need from me: whether I want a custom API hostname, and which
+   domain(s) will receive mail. Walk me through the dashboard steps for each domain,
+   and wait until I say they're done.
+
+3. Tell me the API URL when you're done. It is in .dev.vars as API_URL, along with
+   ADMIN_KEY — never print or commit either.
 ```
 
-## Giving an inbox to an agent
+## Give an agent an inbox
 
-Create the inbox with the [Admin API](docs/admin-api.md), then hand the agent its address, its key and
-[docs/agent-api.md](docs/agent-api.md). Or paste this into a coding agent, in the repo:
+Fill in the four blanks and paste this into any agent. It needs nothing else — no repo, no
+files, no secret store.
 
 ```text
-Give me an email inbox with Cloudflare Agent Inbox, in this repo.
+You have an email inbox at <address>, sending as <name>.
+The API is at <api url>, and the admin key is <admin key>.
 
-1. Find the API URL: API_URL in .dev.vars, written by setup. If it is missing, run `npm run deploy` and take the URL it prints (a custom domain if wrangler.jsonc has one, otherwise the workers.dev URL Cloudflare generated). Confirm with `curl $URL/health`, which returns {"ok":true}.
-2. Read ADMIN_KEY from .dev.vars (gitignored). If it isn't there, tell me, and don't continue. Never print it.
-3. Ask me for the inbox address (name@domain, on a domain already set up for this Worker: see `GET /admin/inboxes` for ones in use) and an optional display name for outgoing mail.
-4. Create it: POST $URL/admin/inboxes with {"address":"…","name":"…"} and the admin key. Append the api_key it returns to .dev.vars as <INBOX>_EMAIL_KEY. It is shown only once, so don't lose it and don't print it.
-5. Check it works: send a short test message from the inbox to an address I give you, then confirm GET /messages?direction=out lists it.
-6. Print a brief I can paste into the agent that will use this inbox, filled in with the real address, URL and variable name — never the key itself:
+1. Create the inbox, following
+   https://raw.githubusercontent.com/sftinc/cfloudflare-agent-inbox/main/docs/admin-api.md
+   Keep the api_key it returns. It is shown once, and it is what you authenticate with
+   from now on.
 
-   You have an email inbox: <address>.
-   - The API is at <url>. Your key is in .dev.vars, as <INBOX>_EMAIL_KEY: read it from there, and never print it.
-   - Authenticate every call with: Authorization: Bearer $<INBOX>_EMAIL_KEY
-   - Read docs/agent-api.md for how to send, list, read and reply.
-   Check for new mail with GET /messages?unread=true. Reading a message marks it read.
-   Reply with POST /send using reply_to_id so it stays in the thread.
+2. Read https://raw.githubusercontent.com/sftinc/cfloudflare-agent-inbox/main/docs/agent-api.md
+   for how to send, list, read and reply.
+
+3. Send me a test message at <your address>.
 ```
+
+`<api url>` and `<admin key>` are `API_URL` and `ADMIN_KEY` in `.dev.vars`
+(`source .dev.vars && echo $API_URL $ADMIN_KEY`). `<address>` is any address on a domain you
+set up above, and `<name>` is the display name its mail goes out as — `Claude
+<claude@example.com>`.
 
 ## The API in brief
 
