@@ -35,7 +35,7 @@ In the Cloudflare dashboard:
 2. **Email > Email Routing**: if you use a subdomain, first add it under
    **apex domain > Settings > Subdomains**.
 3. In Email Routing's rules for the domain, set the **catch-all** rule to
-   **Send to a Worker > byagent-email**.
+   **Send to a Worker > agent-inbox**.
 
 Enabling Email Routing replaces the domain's MX records, so use a domain (or subdomain) that doesn't
 already receive mail.
@@ -51,7 +51,7 @@ Worker, so check that step in the dashboard.
 | `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `0` | Mail older than this many days is [purged](concepts.md#purging) daily at 03:00 UTC, permanently, with its files. Messages only. `0` keeps mail forever. |
 | `ADMIN_KEY` | Worker secret, plus `.dev.vars` locally | set by setup | Admin API key |
 
-Without a hostname the Worker is served on a `workers.dev` URL, `https://byagent-email.<your
+Without a hostname the Worker is served on a `workers.dev` URL, `https://agent-inbox.<your
 subdomain>.workers.dev`, and setup turns that on explicitly (`"workers_dev": true` in
 `wrangler.jsonc`), so there is always a URL. Either way the deploy prints it and setup saves it as
 `API_URL` in `.dev.vars`.

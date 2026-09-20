@@ -5,7 +5,7 @@ import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
-const NAME = "byagent-email";
+const NAME = "agent-inbox";
 
 const run = (cmd, options = {}) => execSync(cmd, { encoding: "utf8", stdio: ["pipe", "pipe", "inherit"], ...options });
 const runVisible = (cmd) => execSync(cmd, { stdio: "inherit" });

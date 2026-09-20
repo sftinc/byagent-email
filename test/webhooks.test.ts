@@ -77,7 +77,7 @@ describe("webhook delivery", () => {
     const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string; secret: string };
     await receive(eml({ subject: "Ping" }), inbox.address, { WEBHOOKS: { sendBatch: vi.fn() } as any });
     const row = await env.DB.prepare("SELECT id FROM messages").first<{ id: string }>();
-    const batch = createMessageBatch("byagent-email-webhooks", [
+    const batch = createMessageBatch("agent-inbox-webhooks", [
       { id: "job-1", timestamp: Date.now(), attempts: 1, body: { webhookId: hook.id, messageId: row!.id } },
     ]);
     return { inbox, hook, messageId: row!.id, batch };

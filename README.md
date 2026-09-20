@@ -1,8 +1,13 @@
-# byagent-email
+# Cloudflare Agent Inbox
 
 A very simple email service for AI agents, built on Cloudflare. Each agent gets its own
 inbox, like `claude@example.com`, and an API key. It can send mail with attachments,
 poll for received and sent mail, and register webhooks that fire when mail arrives.
+
+It's a free alternative to [AgentMail](https://agentmail.to) and the other hosted agent
+inbox services: the same idea — an inbox the agent owns, created over an API, no human
+OAuth — except it runs in your own Cloudflare account, on your own domain, with no
+per-inbox or per-message fee.
 
 It's one Cloudflare Worker. Mail comes in through Email Routing and goes out through
 Email Service. D1, R2 and Queues store the rest.
@@ -28,7 +33,7 @@ Then point each email domain at the Worker in the Cloudflare dashboard. Both ste
 [Setup](docs/setup.md). Or paste this into a coding agent such as Claude Code:
 
 ```text
-Set up byagent-email for me: https://github.com/sftinc/byagent-email
+Set up Cloudflare Agent Inbox for me: https://github.com/sftinc/cfloudflare-agent-inbox
 
 1. Clone the repo and read its README and docs/setup.md.
 2. Ask me whether I want the API on a custom hostname (e.g. api.example.com).
@@ -48,7 +53,7 @@ Create the inbox with the [Admin API](docs/admin-api.md), then hand the agent it
 [docs/agent-api.md](docs/agent-api.md). Or paste this into a coding agent, in the repo:
 
 ```text
-Give me an email inbox with byagent-email, in this repo.
+Give me an email inbox with Cloudflare Agent Inbox, in this repo.
 
 1. Find the API URL: API_URL in .dev.vars, written by setup. If it is missing, run `npm run deploy` and take the URL it prints (a custom domain if wrangler.jsonc has one, otherwise the workers.dev URL Cloudflare generated). Confirm with `curl $URL/health`, which returns {"ok":true}.
 2. Read ADMIN_KEY from .dev.vars (gitignored). If it isn't there, tell me, and don't continue. Never print it.

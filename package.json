@@ -1,5 +1,5 @@
 {
-  "name": "byagent-email",
+  "name": "agent-inbox",
   "private": true,
   "type": "module",
   "scripts": {
