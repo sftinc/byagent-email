@@ -8,13 +8,13 @@ import { loadMessage } from "./mail";
 export async function deliverWebhook(job: WebhookJob, env: Env, attempt: number): Promise<boolean> {
   // Skips the job when the webhook or the message has been deleted since it was queued.
   const hook = await env.DB.prepare(
-    `SELECT w.url, w.secret, w.inbox_id, i.address FROM webhooks w
+    `SELECT w.url, w.secret, w.bearer, w.inbox_id, i.address FROM webhooks w
      JOIN inboxes i ON i.id = w.inbox_id
      JOIN messages m ON m.id = ? AND m.inbox_id = w.inbox_id AND m.deleted_at IS NULL
      WHERE w.id = ? AND w.deleted_at IS NULL`,
   )
     .bind(job.messageId, job.webhookId)
-    .first<{ url: string; secret: string; inbox_id: string; address: string }>();
+    .first<{ url: string; secret: string; bearer: string | null; inbox_id: string; address: string }>();
   const stored = hook && (await loadMessage(env, hook.inbox_id, job.messageId));
   if (!hook || !stored) {
     console.log({ event: "webhook_skipped", webhookId: job.webhookId, messageId: job.messageId, attempt });
@@ -39,14 +39,19 @@ export async function deliverWebhook(job: WebhookJob, env: Env, attempt: number)
       error,
     });
 
+  // The signature proves the delivery came from us. A bearer, when the receiver issued one, is
+  // how that receiver authenticates us instead; it is sent verbatim and never logged.
+  const requestHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Timestamp": timestamp,
+    "X-Signature": `sha256=${signature}`,
+  };
+  if (hook.bearer) requestHeaders.Authorization = `Bearer ${hook.bearer}`;
+
   try {
     const res = await fetch(hook.url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Timestamp": timestamp,
-        "X-Signature": `sha256=${signature}`,
-      },
+      headers: requestHeaders,
       body,
       signal: AbortSignal.timeout(10_000),
     });

@@ -8,17 +8,18 @@ delivery fails.
 
 ```bash
 curl -X POST $URL/webhooks -H "Authorization: Bearer $API_KEY" \
-  -d '{"url":"https://agent.example/hook","name":"Ops alerts"}'
+  -d '{"url":"https://agent.example/hook","name":"Ops alerts","bearer":"token-the-receiver-issued"}'
 # → {"id":"01a0…","name":"Ops alerts","url":"https://agent.example/hook","secret":"…"}
 ```
 
 - The URL must be `https://`.
 - `name` is optional, up to 100 characters: a label so a list says what each webhook is for.
-- `secret` is optional, and signs every delivery for this webhook. Leave it out and the Worker
-  generates one; send one (16 to 200 characters, trimmed) to sign with a key the receiver already
-  knows. Either way it comes back in the response.
-- **A generated `secret` is shown only once**, so keep it.
-- Up to 10 webhooks per inbox. To rotate a secret, delete the webhook and add it again.
+- **The `secret` is shown only once**, so keep it. It signs every delivery for this webhook, and
+  never leaves the Worker: only its HMAC travels, in `X-Signature`.
+- `bearer` is optional, up to 500 characters, trimmed. Set it when the receiver authenticates you
+  with a token it issued instead of checking the signature. It is sent verbatim as
+  `Authorization: Bearer ...` on every delivery, and is never shown again.
+- Up to 10 webhooks per inbox. To change a secret or a bearer, delete the webhook and add it again.
 
 ```bash
 curl $URL/webhooks -H "Authorization: Bearer $API_KEY"   # list: id, name, url (no secrets)

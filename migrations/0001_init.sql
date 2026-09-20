@@ -21,7 +21,8 @@ CREATE TABLE webhooks (
   name       TEXT,              -- optional label, so a list says what each webhook is for
   url        TEXT NOT NULL,
   -- auth
-  secret     TEXT NOT NULL,     -- signs this webhook's deliveries
+  secret     TEXT NOT NULL,     -- signs this webhook's deliveries; never sent, only its HMAC
+  bearer     TEXT,              -- sent verbatim as `Authorization: Bearer ...` when set
   -- dates
   created_at INTEGER NOT NULL,
   deleted_at INTEGER

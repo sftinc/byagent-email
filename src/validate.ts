@@ -11,15 +11,16 @@ export function parseName(value: unknown): string | null | undefined {
 
 export const BAD_NAME = "`name` must be text, at most 100 characters, with no line breaks";
 
-// A webhook signing secret. Omitted means the Worker generates one. Trimmed, because a pasted
-// secret with stray whitespace would mismatch on every delivery.
+// A token the receiver issued, sent as `Authorization: Bearer ...`. Omitted means no such header.
+// Trimmed, because a pasted token with stray whitespace would be rejected on every delivery.
+// Control characters are refused: a line break in a header value would inject a header.
 // Returns undefined when the value is invalid.
-export function parseSecret(value: unknown): string | null | undefined {
+export function parseBearer(value: unknown): string | null | undefined {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") return undefined;
-  const secret = value.trim();
-  if (secret.length < 16 || secret.length > 200 || /[\x00-\x1f\x7f]/.test(secret)) return undefined;
-  return secret;
+  const bearer = value.trim();
+  if (!bearer || bearer.length > 500 || /[\x00-\x1f\x7f]/.test(bearer)) return undefined;
+  return bearer;
 }
 
-export const BAD_SECRET = "`secret` must be text, 16 to 200 characters, with no line breaks";
+export const BAD_BEARER = "`bearer` must be text, 1 to 500 characters, with no line breaks";

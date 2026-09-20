@@ -6,7 +6,7 @@ import { randomToken, sha256, uuidv7 } from "./crypto";
 import type { Env, Inbox } from "./env";
 import { type Attachment, loadAttachment, loadMessage, saveSent } from "./mail";
 import { buildEmail } from "./send";
-import { BAD_NAME, BAD_SECRET, parseName, parseSecret } from "./validate";
+import { BAD_BEARER, BAD_NAME, parseBearer, parseName } from "./validate";
 
 type App = { Bindings: Env; Variables: { inbox: Inbox } };
 
@@ -201,19 +201,21 @@ app.get("/webhooks", async (c) => {
 });
 
 app.post("/webhooks", async (c) => {
-  type WebhookBody = { url?: unknown; name?: unknown; secret?: unknown };
+  type WebhookBody = { url?: unknown; name?: unknown; bearer?: unknown };
   const body = await c.req.json<WebhookBody>().catch(() => ({}) as WebhookBody);
   const url = typeof body.url === "string" && URL.canParse(body.url) ? new URL(body.url) : null;
   if (url?.protocol !== "https:") return c.json({ error: "`url` must be an https:// URL" }, 400);
   const name = parseName(body.name);
   if (name === undefined) return c.json({ error: BAD_NAME }, 400);
-  const supplied = parseSecret(body.secret);
-  if (supplied === undefined) return c.json({ error: BAD_SECRET }, 400);
+  const bearer = parseBearer(body.bearer);
+  if (bearer === undefined) return c.json({ error: BAD_BEARER }, 400);
   if ((await webhookCount(c.env, c.get("inbox").id)) >= 10) return c.json({ error: TOO_MANY }, 400);
   const id = uuidv7();
-  const secret = supplied ?? randomToken();
-  await c.env.DB.prepare("INSERT INTO webhooks (id, inbox_id, name, url, secret, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(id, c.get("inbox").id, name, url.href, secret, Date.now())
+  const secret = randomToken();
+  await c.env.DB.prepare(
+    "INSERT INTO webhooks (id, inbox_id, name, url, secret, bearer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  )
+    .bind(id, c.get("inbox").id, name, url.href, secret, bearer, Date.now())
     .run();
   return c.json({ id, name, url: url.href, secret }, 201);
 });

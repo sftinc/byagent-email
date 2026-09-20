@@ -57,34 +57,29 @@ describe("webhook endpoints", () => {
     expect(await full.json()).toEqual({ error: "At most 10 webhooks per inbox" });
   });
 
-  it("takes a supplied secret, and signs deliveries with it", async () => {
-    const inbox = await createInbox("agent");
-    const secret = "whsec_a-secret-the-receiver-already-knows";
-    const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://a.example/hook", secret: ` ${secret} ` } })).json()) as any;
-    expect(hook.secret).toBe(secret);
-
-    await receive(eml({ subject: "Ping" }), inbox.address, { WEBHOOKS: { sendBatch: vi.fn() } as any });
-    const row = await env.DB.prepare("SELECT id FROM messages").first<{ id: string }>();
-    const batch = createMessageBatch("agent-inbox-webhooks", [
-      { id: "job-1", timestamp: Date.now(), attempts: 1, body: { webhookId: hook.id, messageId: row!.id } },
-    ]);
-    const fetchMock = vi.fn(async () => new Response("ok"));
-    vi.stubGlobal("fetch", fetchMock);
-    await handleQueue(batch, env);
-
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    const headers = init.headers as Record<string, string>;
-    expect(headers["X-Signature"]).toBe(`sha256=${await hmacSha256(secret, `${headers["X-Timestamp"]}.${init.body}`)}`);
+  it("ignores a supplied secret and generates its own", async () => {
+    const { api_key: key } = await createInbox("agent");
+    const body = { url: "https://a.example/hook", secret: "whsec_the-receiver-already-knows-this" };
+    const hook = (await (await api("/webhooks", { method: "POST", key, body })).json()) as { secret: string };
+    expect(hook.secret).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("refuses a secret that is too short, too long, or not text", async () => {
+  it("refuses a bearer that is empty, too long, or not text", async () => {
     const { api_key: key } = await createInbox("agent");
-    const bad = ["short", "x".repeat(201), "has\nbreak", 12345];
-    for (const secret of bad) {
-      const res = await api("/webhooks", { method: "POST", key, body: { url: "https://a.example/hook", secret } });
+    for (const bearer of ["", "x".repeat(501), "has\nbreak", "has\rbreak", 12345]) {
+      const res = await api("/webhooks", { method: "POST", key, body: { url: "https://a.example/hook", bearer } });
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: expect.stringContaining("`secret`") });
+      expect(await res.json()).toEqual({ error: expect.stringContaining("`bearer`") });
     }
+  });
+
+  it("never gives the bearer back", async () => {
+    const { api_key: key } = await createInbox("agent");
+    const bearer = "crsr_never-readable-again";
+    const created = await (await api("/webhooks", { method: "POST", key, body: { url: "https://a.example/hook", bearer } })).json();
+    expect(JSON.stringify(created)).not.toContain(bearer);
+    const listed = await (await api("/webhooks", { key })).json();
+    expect(JSON.stringify(listed)).not.toContain(bearer);
   });
 
   it("caps webhooks at 10 per inbox", async () => {
@@ -105,9 +100,9 @@ describe("webhook endpoints", () => {
 });
 
 describe("webhook delivery", () => {
-  async function setup() {
+  async function setup(extra: Record<string, unknown> = {}) {
     const inbox = await createInbox("agent");
-    const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string; secret: string };
+    const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://agent.example/hook", ...extra } })).json()) as { id: string; secret: string };
     await receive(eml({ subject: "Ping" }), inbox.address, { WEBHOOKS: { sendBatch: vi.fn() } as any });
     const row = await env.DB.prepare("SELECT id FROM messages").first<{ id: string }>();
     const batch = createMessageBatch("agent-inbox-webhooks", [
@@ -230,5 +225,40 @@ describe("webhook delivery", () => {
       messageId,
       attempt: 1,
     });
+  });
+
+  it("sends the bearer as an Authorization header", async () => {
+    const { batch } = await setup({ bearer: "crsr_a-key-the-receiver-issued" });
+    const fetchMock = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleQueue(batch, env);
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer crsr_a-key-the-receiver-issued");
+  });
+
+  it("sends no Authorization header when the webhook has no bearer", async () => {
+    const { batch } = await setup();
+    const fetchMock = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleQueue(batch, env);
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.headers).not.toHaveProperty("Authorization");
+  });
+
+  it("keeps the bearer out of the delivery log", async () => {
+    const bearer = "crsr_must-never-be-logged";
+    const { batch } = await setup({ bearer });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 401 })));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleQueue(batch, env);
+
+    expect(JSON.stringify(log.mock.calls)).not.toContain(bearer);
   });
 });
