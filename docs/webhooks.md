@@ -14,7 +14,10 @@ curl -X POST $URL/webhooks -H "Authorization: Bearer $API_KEY" \
 
 - The URL must be `https://`.
 - `name` is optional, up to 100 characters: a label so a list says what each webhook is for.
-- **The `secret` is shown only once.** It signs every delivery for this webhook.
+- `secret` is optional, and signs every delivery for this webhook. Leave it out and the Worker
+  generates one; send one (16 to 200 characters, trimmed) to sign with a key the receiver already
+  knows. Either way it comes back in the response.
+- **A generated `secret` is shown only once**, so keep it.
 - Up to 10 webhooks per inbox. To rotate a secret, delete the webhook and add it again.
 
 ```bash

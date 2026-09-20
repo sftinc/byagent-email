@@ -54,6 +54,36 @@ describe("webhook endpoints", () => {
     expect(await full.json()).toEqual({ error: "At most 10 webhooks per inbox" });
   });
 
+  it("takes a supplied secret, and signs deliveries with it", async () => {
+    const inbox = await createInbox("agent");
+    const secret = "whsec_a-secret-the-receiver-already-knows";
+    const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://a.example/hook", secret: ` ${secret} ` } })).json()) as any;
+    expect(hook.secret).toBe(secret);
+
+    await receive(eml({ subject: "Ping" }), inbox.address, { WEBHOOKS: { sendBatch: vi.fn() } as any });
+    const row = await env.DB.prepare("SELECT id FROM messages").first<{ id: string }>();
+    const batch = createMessageBatch("agent-inbox-webhooks", [
+      { id: "job-1", timestamp: Date.now(), attempts: 1, body: { webhookId: hook.id, messageId: row!.id } },
+    ]);
+    const fetchMock = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+    await handleQueue(batch, env);
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-Signature"]).toBe(`sha256=${await hmacSha256(secret, `${headers["X-Timestamp"]}.${init.body}`)}`);
+  });
+
+  it("refuses a secret that is too short, too long, or not text", async () => {
+    const { api_key: key } = await createInbox("agent");
+    const bad = ["short", "x".repeat(201), "has\nbreak", 12345];
+    for (const secret of bad) {
+      const res = await api("/webhooks", { method: "POST", key, body: { url: "https://a.example/hook", secret } });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: expect.stringContaining("`secret`") });
+    }
+  });
+
   it("caps webhooks at 10 per inbox", async () => {
     const { api_key: key } = await createInbox("agent");
     for (let i = 0; i < 10; i++) {

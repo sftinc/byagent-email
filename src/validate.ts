@@ -10,3 +10,16 @@ export function parseName(value: unknown): string | null | undefined {
 }
 
 export const BAD_NAME = "`name` must be text, at most 100 characters, with no line breaks";
+
+// A webhook signing secret. Omitted means the Worker generates one. Trimmed, because a pasted
+// secret with stray whitespace would mismatch on every delivery.
+// Returns undefined when the value is invalid.
+export function parseSecret(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const secret = value.trim();
+  if (secret.length < 16 || secret.length > 200 || /[\x00-\x1f\x7f]/.test(secret)) return undefined;
+  return secret;
+}
+
+export const BAD_SECRET = "`secret` must be text, 16 to 200 characters, with no line breaks";
