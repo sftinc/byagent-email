@@ -23,7 +23,10 @@ The setup command:
   the Worker is served on. `wrangler dev` uses this file too. Load it with `source .dev.vars`.
 
 Setup is safe to re-run. It keeps existing resources, data and the `ADMIN_KEY` in `.dev.vars`. To
-rotate the admin key, delete that line and re-run. After pulling updates, re-run it to redeploy.
+rotate the admin key, delete that line and re-run. The old key stops working at once, so update
+anything that uses it, such as an MCP connection, and every outstanding attachment link stops working
+too: links are signed with the admin key, and at most fifteen minutes of them are ever live. After
+pulling updates, re-run it to redeploy.
 
 **Upgrading an existing install:** this release needs `API_DOMAIN` to mint attachment links. Re-run
 setup with your API hostname, `npm run setup <api hostname>`: it adds `API_DOMAIN` to the `vars` in
