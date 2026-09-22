@@ -35,6 +35,11 @@ Every message has a `status`:
 | `sent` | mail the provider accepted |
 | `failed` | mail the provider refused; `status_reason` carries its code |
 
+Bounce detection is heuristic: `status_reason` records which signal matched, so a wrongly flagged
+message leaves a trail. Automatic replies also use a null return path, but ones that identify
+themselves per RFC 3834 (`Auto-Submitted: auto-replied`) are excluded, so an out-of-office or
+"ticket received" reply is `received`, not `bounced`.
+
 ## Deleting
 
 Deletes are soft everywhere. A deleted inbox, webhook or message disappears from the lists, but its

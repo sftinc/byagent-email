@@ -103,4 +103,16 @@ describe("incoming mail", () => {
     await receive(eml(), "agent@email.example.com");
     expect(await bounceStatus()).toEqual({ status: "received", status_reason: null });
   });
+
+  it("does not flag an auto-reply with a null return path as a bounce", async () => {
+    await createInbox("agent");
+    await receive(eml({ headers: "Return-Path: <>\r\nAuto-Submitted: auto-replied\r\n" }), "agent@email.example.com");
+    expect(await bounceStatus()).toEqual({ status: "received", status_reason: null });
+  });
+
+  it("still flags a DSN carrying Auto-Submitted: auto-generated as a bounce", async () => {
+    await createInbox("agent");
+    await receive(eml({ headers: "Return-Path: <>\r\nAuto-Submitted: auto-generated\r\n" }), "agent@email.example.com");
+    expect(await bounceStatus()).toEqual({ status: "bounced", status_reason: "null-return-path" });
+  });
 });
