@@ -44,8 +44,8 @@ curl -X POST $URL/webhooks/01a0…/restore -H "Authorization: Bearer $API_KEY"
 
 | Field | |
 |---|---|
-| `status` | `"received"` or `"sent"`. In the future, `"bounced"`, `"rejected"`, or `"failed"` when a bounce, rejection, or send failure occurs — how a receiver tells a real message from a delivery failure. |
-| `status_reason` | Why the status is set; `null` unless `status` is one of those future values. |
+| `status` | `"received"`, or `"bounced"` when the message is a delivery status notification. Webhooks are sent only for inbound mail, so `"sent"`, `"failed"` and `"rejected"` never appear here. |
+| `status_reason` | Why the status is `"bounced"`; `null` for ordinary received mail. |
 
 It leaves out `html`, `cc`, `bcc` and the full header list, to stay small. Fetch
 [`GET /messages/:id`](agent-api.md#read-a-message) for those, and for attachment downloads. Note that
