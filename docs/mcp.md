@@ -11,7 +11,7 @@ Which key you paste decides what the connection can do.
 | Key | Tools | Reaches |
 |---|---|---|
 | An inbox's `api_key` | the 10 mail and webhook tools | that inbox only |
-| `ADMIN_KEY` | those 10, plus 9 inbox-management tools | any inbox, named by `inbox` on each call |
+| `ADMIN_KEY` | those 10, plus 9 inbox-management tools | any inbox, named by `inbox` on each call that acts on one |
 
 Claude Code:
 
@@ -100,8 +100,9 @@ fifteen minutes and needing no key. See [Attachment links](concepts.md#attachmen
 
 | | |
 |---|---|
+| `400`, code `-32600` | The body isn't a JSON-RPC 2.0 request |
 | `400`, code `-32020` | A required header is missing, or disagrees with the body |
 | `400`, code `-32022` | A protocol version we don't speak; `data.supported` lists what we do |
-| `400`, code `-32602` | Malformed `_meta`, or an unknown tool |
+| `400`, code `-32602` | Malformed `_meta`, an unknown tool, or a `tools/call` with no `name` |
 | `404`, code `-32601` | Unknown method, or one this revision doesn't have (`initialize` on `2026-07-28`, `ping` on it too) |
 | `405` | Anything but `POST` |

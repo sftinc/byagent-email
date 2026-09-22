@@ -53,8 +53,9 @@ curl -X POST $URL/webhooks/01a0…/restore -H "Authorization: Bearer $API_KEY"
 | `message.status_reason` | Why the status is what it is; `null` when there's nothing to add. |
 
 Each attachment carries a `url` that fetches its bytes for fifteen minutes with no key — see
-[Attachment links](concepts.md#attachment-links). A receiver that was down through the retry window
-will find the link expired; the message is still there to read.
+[Attachment links](concepts.md#attachment-links). Each delivery attempt mints a fresh link, good for
+fifteen minutes from that attempt. A link has expired only if the receiver acts on it later than
+that; the message is still there to read.
 
 A status delivery carries the same message shape as an arrival — same fields, same attachment list —
 just with `event: "status"` and `direction: "out"` instead.
