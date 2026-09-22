@@ -26,6 +26,24 @@ export function bounceEvent(messageId: string, overrides: Record<string, unknown
   };
 }
 
+async function sentMessage(messageId: string) {
+  await env.DB.prepare("INSERT INTO inboxes (id, address, key_hash, created_at, updated_at) VALUES ('i1','a@x.com','h',0,0)").run();
+  await env.DB.prepare(
+    `INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, message_id, created_at, updated_at)
+     VALUES ('m1','i1','out','sent','a@x.com','','b@x.com','s','[]',?,1,1)`,
+  ).bind(messageId).run();
+}
+
+const run = (body: unknown, ageMs = 0) =>
+  handleDeliveryEvent(
+    createMessageBatch("agent-inbox-email-events", [
+      { id: "ev-1", timestamp: new Date(Date.now() - ageMs), attempts: 1, body },
+    ]) as any,
+    env,
+  );
+
+const status = () => env.DB.prepare("SELECT status, status_reason, updated_at FROM messages").first<any>();
+
 describe("delivery events", () => {
   it("acks an event with no matching message", async () => {
     const batch = createMessageBatch("agent-inbox-email-events", [
@@ -34,5 +52,98 @@ describe("delivery events", () => {
     const ctx = createExecutionContext();
     await handleDeliveryEvent(batch as MessageBatch<DeliveryEvent>, env);
     expect((await getQueueResult(batch, ctx)).explicitAcks).toEqual(["ev-1"]);
+  });
+
+  it("marks a bounced message bounced with its enhanced status code", async () => {
+    await sentMessage("<m@x>");
+    await run(bounceEvent("<m@x>"));
+    expect(await status()).toMatchObject({ status: "bounced", status_reason: "5.1.1" });
+  });
+
+  it("prefixes a soft bounce", async () => {
+    await sentMessage("<m@x>");
+    const e = bounceEvent("<m@x>");
+    e.payload.bounce.type = "soft";
+    await run(e);
+    expect((await status()).status_reason).toBe("soft:5.1.1");
+  });
+
+  it("marks a delivered message delivered with no reason", async () => {
+    await sentMessage("<m@x>");
+    const e = bounceEvent("<m@x>");
+    e.type = "cf.email.sending.message.delivered";
+    e.payload.delivery = { status: "delivered", provider: "cloudflare" } as any;
+    delete (e.payload as any).bounce;
+    await run(e);
+    expect(await status()).toMatchObject({ status: "delivered", status_reason: null });
+  });
+
+  it("marks a deferred message deferred with its enhanced status code", async () => {
+    await sentMessage("<m@x>");
+    const e = bounceEvent("<m@x>");
+    e.type = "cf.email.sending.message.deferred";
+    e.payload.terminal = false;
+    e.payload.delivery = {
+      status: "deferred",
+      provider: "gmail",
+      smtpStatusCode: "421",
+      smtpEnhancedStatusCode: "4.2.2",
+      smtpResponse: "421 4.2.2 Mailbox full, try again later",
+    } as any;
+    delete (e.payload as any).bounce;
+    await run(e);
+    expect(await status()).toMatchObject({ status: "deferred", status_reason: "4.2.2" });
+  });
+
+  it("marks a complained message complained with no reason", async () => {
+    await sentMessage("<m@x>");
+    const e = bounceEvent("<m@x>");
+    e.type = "cf.email.sending.message.complained";
+    e.payload.delivery = { status: "complained", provider: "gmail" } as any;
+    delete (e.payload as any).bounce;
+    await run(e);
+    expect(await status()).toMatchObject({ status: "complained", status_reason: null });
+  });
+
+  it("marks a rejected message rejected with delivery.status as the reason", async () => {
+    await sentMessage("<m@x>");
+    const e = bounceEvent("<m@x>");
+    e.type = "cf.email.sending.message.rejected";
+    e.payload.delivery = { status: "suppressed", provider: "cloudflare" } as any;
+    delete (e.payload as any).bounce;
+    await run(e);
+    expect(await status()).toMatchObject({ status: "rejected", status_reason: "suppressed" });
+  });
+
+  it("marks a failed message failed with its enhanced status code", async () => {
+    await sentMessage("<m@x>");
+    const e = bounceEvent("<m@x>");
+    e.type = "cf.email.sending.message.failed";
+    e.payload.delivery = {
+      status: "failed",
+      provider: "gmail",
+      smtpStatusCode: "451",
+      smtpEnhancedStatusCode: "4.3.0",
+      smtpResponse: "451 4.3.0 internal error",
+    } as any;
+    delete (e.payload as any).bounce;
+    await run(e);
+    expect(await status()).toMatchObject({ status: "failed", status_reason: "4.3.0" });
+  });
+
+  it("bumps updated_at", async () => {
+    await sentMessage("<m@x>");
+    await run(bounceEvent("<m@x>"));
+    expect((await status()).updated_at).toBeGreaterThan(1);
+  });
+
+  it("ignores an event for an inbound message", async () => {
+    await env.DB.prepare("INSERT INTO inboxes (id, address, key_hash, created_at, updated_at) VALUES ('i1','a@x.com','h',0,0)").run();
+    await env.DB.prepare(
+      `INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, message_id, created_at, updated_at)
+       VALUES ('m1','i1','in','received','a@x.com','','b@x.com','s','[]','<m@x>',1,1)`,
+    ).run();
+    await run(bounceEvent("<m@x>"));
+    expect((await status()).status).toBe("received");
   });
 });
