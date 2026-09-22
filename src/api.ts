@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { except } from "hono/combine";
 import { createMiddleware } from "hono/factory";
 import { admin } from "./admin";
-import { sha256 } from "./crypto";
+import { authenticate, bearer, resolveInbox } from "./auth";
 import type { Env, Inbox } from "./env";
 import { type Attachment, loadAttachment } from "./mail";
 import { deleteMessage, findMessage, listMessages, markUnread, readMessage, restoreMessage } from "./messages";
@@ -20,16 +20,16 @@ app.onError((err, c) => {
   return c.json({ error: "Internal error" }, 500);
 });
 
-// Every route except /admin/* is authenticated with an inbox API key.
+// Every route except /admin/*, /health, /mcp and /attachments/* takes a bearer token: an inbox key,
+// or the admin key with `?inbox=` naming the inbox to act on. Admin use of an inbox is logged,
+// since it writes no row of its own.
 const inboxAuth = createMiddleware<App>(async (c, next) => {
-  const token = c.req.header("Authorization")?.replace(/^Bearer /, "");
-  const row = token
-    ? await c.env.DB.prepare("SELECT id, address, name, key_hash, deleted_at FROM inboxes WHERE key_hash = ? AND deleted_at IS NULL")
-        .bind(await sha256(token))
-        .first<Inbox>()
-    : null;
-  if (!row) return c.json({ error: "Unauthorized" }, 401);
-  c.set("inbox", row);
+  const principal = await authenticate(c.env, bearer(c.req.header("Authorization")));
+  if (!principal) return c.json({ error: "Unauthorized" }, 401);
+  const inbox = await resolveInbox(c.env, principal, c.req.query("inbox"), "live");
+  if (!inbox.ok) return reply(c, inbox);
+  if (principal.kind === "admin") console.log({ event: "admin_access", method: c.req.method, path: c.req.path, inbox: inbox.data.address });
+  c.set("inbox", inbox.data);
   await next();
 });
 
