@@ -162,6 +162,24 @@ describe("webhook delivery", () => {
     });
   });
 
+  it("carries a bounced status in the payload", async () => {
+    const inbox = await createInbox("agent");
+    const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string; secret: string };
+    await receive(eml({ subject: "Bounced", headers: "Return-Path: <>\r\n" }), inbox.address, { WEBHOOKS: { sendBatch: vi.fn() } as any });
+    const row = await env.DB.prepare("SELECT id FROM messages").first<{ id: string }>();
+    const batch = createMessageBatch("agent-inbox-webhooks", [
+      { id: "job-1", timestamp: Date.now(), attempts: 1, body: { webhookId: hook.id, messageId: row!.id } },
+    ]);
+    const fetchMock = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await handleQueue(batch, env);
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.message).toMatchObject({ status: "bounced", status_reason: "null-return-path" });
+  });
+
   it("retries with backoff on a failed delivery", async () => {
     const { batch } = await setup();
     vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 503 })));

@@ -42,10 +42,10 @@ CREATE TABLE messages (
   recipients    TEXT NOT NULL,     -- to, cc and (for sent mail) bcc, comma-separated
   -- content
   subject     TEXT,
-  attachments TEXT NOT NULL,    -- [{filename, type, size, disposition}], '[]' when there are none
+  attachments TEXT NOT NULL,       -- [{filename, type, size, disposition}], '[]' when there are none
   -- dates
-  created_at  INTEGER NOT NULL, -- received or sent
-  read_at     INTEGER,          -- null until the agent marks it read
+  created_at  INTEGER NOT NULL,    -- received or sent
+  read_at     INTEGER,             -- null until the agent marks it read
   deleted_at  INTEGER
 );
 

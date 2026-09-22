@@ -1,9 +1,10 @@
 import { env } from "cloudflare:workers";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleScheduled } from "../src/cleanup";
 import { reset } from "./helpers";
 
 beforeEach(reset);
+afterEach(() => vi.restoreAllMocks());
 
 const DAY = 86_400_000;
 

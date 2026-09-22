@@ -77,7 +77,15 @@ app.get("/messages", async (c) => {
      FROM messages WHERE ${where}${cursor} LIMIT 21`,
   )
     .bind(...params, ...(after || before ? [after || before] : []))
-    .all<{ id: string; from_addr: string; from_name: string; recipients: string; attachments: string }>();
+    .all<{
+      id: string;
+      status: string;
+      status_reason: string | null;
+      from_addr: string;
+      from_name: string;
+      recipients: string;
+      attachments: string;
+    }>();
   const more = results.length > 20;
   const page = results.slice(0, 20);
   if (after) page.reverse();

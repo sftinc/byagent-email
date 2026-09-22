@@ -168,9 +168,18 @@ describe("admin", () => {
 
   it("lists rejected mail, newest first", async () => {
     await createInbox("agent");
-    await receive(eml({ subject: "One" }), "nobody@email.example.com");
-    await receive(eml({ subject: "Two" }), "nobody-else@email.example.com");
-    await receive(eml({ subject: "Real" }), "agent@email.example.com");
+    await receive(eml({ subject: "Real" }), "agent@email.example.com"); // must not appear below
+
+    // Inserted directly with controlled ids: `receive()`'s uuidv7 ids have no intra-millisecond
+    // counter, so two back-to-back calls can tie and make "newest first" a coin flip.
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at) VALUES ('r1', NULL, 'in', 'rejected', 'unknown_recipient', 'sender@example.org', '', 'nobody@email.example.com', 'One', '[]', 1)",
+      ),
+      env.DB.prepare(
+        "INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at) VALUES ('r2', NULL, 'in', 'rejected', 'unknown_recipient', 'sender@example.org', '', 'nobody-else@email.example.com', 'Two', '[]', 2)",
+      ),
+    ]);
 
     const res = await api("/admin/rejected", { key: ADMIN_KEY });
     expect(res.status).toBe(200);
