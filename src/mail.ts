@@ -183,13 +183,14 @@ export async function purgeMessages(env: Env, where: string, ...params: unknown[
   while (true) {
     const { results } = await env.DB.prepare(`SELECT id, inbox_id, attachments FROM messages WHERE ${where} LIMIT 100`)
       .bind(...params)
-      .all<{ id: string; inbox_id: string; attachments: string }>();
+      .all<{ id: string; inbox_id: string | null; attachments: string }>();
     if (results.length === 0) return purged;
     const keys = results.flatMap((m) => {
+      if (m.inbox_id === null) return []; // rejected mail has no stored files
       const files = (JSON.parse(m.attachments) as Attachment[]).map((_, i) => String(i));
-      return ["message.json", ...files].map((file) => messageKey(m.inbox_id, m.id, file));
+      return ["message.json", ...files].map((file) => messageKey(m.inbox_id!, m.id, file));
     });
-    await env.MAIL.delete(keys);
+    if (keys.length > 0) await env.MAIL.delete(keys);
     await env.DB.batch(results.map((m) => env.DB.prepare("DELETE FROM messages WHERE id = ?").bind(m.id)));
     purged += results.length;
   }

@@ -47,6 +47,8 @@ Purge is the one permanent operation, and the only thing that frees storage.
 - `RETENTION_DAYS` purges on a schedule: each night it removes messages older than that many days,
   deleted or not, with their files. It never touches inboxes or webhooks. See
   [Configuration](setup.md#configuration).
+- Rejected mail (see below) is always purged after 30 days, regardless of `RETENTION_DAYS`. No
+  inbox purge can reach it, since it belongs to no inbox.
 
 See [`POST /admin/inboxes/:id/purge`](admin-api.md#purge).
 
