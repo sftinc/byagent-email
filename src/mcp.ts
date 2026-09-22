@@ -158,6 +158,8 @@ async function callTool(c: Ctx, id: unknown, params: Record<string, any>) {
   if (!principal) return rpcResult(c, id, toolError(401, "Unauthorized: send an inbox key or the admin key as `Authorization: Bearer`"));
   if (tool.admin && principal.kind !== "admin") return rpcResult(c, id, toolError(403, `${tool.name} needs the admin key`));
 
+  if (!tool.admin && !tool.policy) return rpcResult(c, id, toolError(500, `${tool.name} is misconfigured`));
+
   let inbox: Inbox | null = null;
   if (tool.policy) {
     const resolved = await resolveInbox(c.env, principal, typeof args.inbox === "string" ? args.inbox : undefined, tool.policy);
@@ -167,5 +169,10 @@ async function callTool(c: Ctx, id: unknown, params: Record<string, any>) {
       console.log({ event: "admin_access", tool: tool.name, inbox: inbox.address, ...(typeof args.id === "string" && { messageId: args.id }) });
     }
   }
-  return rpcResult(c, id, toolResult(await tool.run(c.env, inbox as Inbox, args)));
+  try {
+    return rpcResult(c, id, toolResult(await tool.run(c.env, inbox as Inbox, args)));
+  } catch (err) {
+    console.error(err);
+    return rpcResult(c, id, toolError(500, "Internal error"));
+  }
 }
