@@ -1,6 +1,6 @@
 // One-time setup: creates the Cloudflare resources, writes wrangler.jsonc,
-// deploys the Worker, sets ADMIN_KEY and saves it to .dev.vars (gitignored).
-// Safe to re-run: it keeps the ADMIN_KEY in .dev.vars (delete that line to rotate it).
+// deploys the Worker, sets ADMIN_KEY and LINK_KEY and saves them to .dev.vars (gitignored).
+// Safe to re-run: it keeps both keys in .dev.vars (delete a key's line to rotate it).
 import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -104,13 +104,18 @@ if (apiDomain && setApiDomain(apiDomain)) {
   console.log(run("npx wrangler deploy"));
 }
 
-// .dev.vars (gitignored) holds the admin key and the API URL, so tools and agents can find them.
+// .dev.vars (gitignored) holds the keys and the API URL, so tools and agents can find them, and so
+// a re-run keeps the same keys: a Worker secret can't be read back.
 const lines = existsSync(".dev.vars") ? readFileSync(".dev.vars", "utf8").split("\n").filter(Boolean) : [];
 const vars = new Map(lines.map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]));
 const existing = vars.get("ADMIN_KEY");
 const adminKey = existing || randomBytes(32).toString("hex");
 run("npx wrangler secret put ADMIN_KEY", { input: adminKey });
 vars.set("ADMIN_KEY", adminKey);
+// Signs attachment links and nothing else, so the admin key can be rotated without touching them.
+const linkKey = vars.get("LINK_KEY") || randomBytes(32).toString("hex");
+run("npx wrangler secret put LINK_KEY", { input: linkKey });
+vars.set("LINK_KEY", linkKey);
 if (apiUrl) vars.set("API_URL", apiUrl);
 writeFileSync(".dev.vars", `${[...vars].map(([k, v]) => `${k}=${v}`).join("\n")}\n`);
 

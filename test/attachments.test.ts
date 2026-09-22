@@ -30,10 +30,23 @@ describe("attachment tokens", () => {
     expect(await verifyAttachmentToken(env, tokenOf(url))).toEqual({ inbox: box, messageId, index: 3 });
   });
 
-  it("a token minted under one ADMIN_KEY does not verify under another", async () => {
+  it("a token minted under one LINK_KEY does not verify under another", async () => {
     const box = await inbox();
     const token = tokenOf(await mintAttachmentUrl(env, box, uuidv7(), 0));
-    expect(await verifyAttachmentToken({ ...env, ADMIN_KEY: "other" }, token)).toBe("invalid");
+    expect(await verifyAttachmentToken({ ...env, LINK_KEY: "other" }, token)).toBe("invalid");
+  });
+
+  it("rotating the admin key leaves links working", async () => {
+    const box = await inbox();
+    const token = tokenOf(await mintAttachmentUrl(env, box, uuidv7(), 0));
+    expect(await verifyAttachmentToken({ ...env, ADMIN_KEY: "rotated" }, token)).toMatchObject({ index: 0 });
+  });
+
+  it("without a LINK_KEY there are no links, rather than forgeable ones", async () => {
+    const box = await inbox();
+    const token = tokenOf(await mintAttachmentUrl(env, box, uuidv7(), 0));
+    await expect(mintAttachmentUrl({ ...env, LINK_KEY: "" }, box, uuidv7(), 0)).rejects.toThrow(/LINK_KEY/);
+    expect(await verifyAttachmentToken({ ...env, LINK_KEY: "" }, token)).toBe("invalid");
   });
 
   it("any flipped byte is invalid", async () => {

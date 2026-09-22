@@ -100,13 +100,14 @@ https://api.example.com/attachments/AZk4sBxEegKOMV1_mgscLQGZOMQ_Knwxn16KGyw9Tl8A
 ```
 
 The link needs no key, so anything holding it can follow it: a script, a browser, a model. It is
-signed with the inbox's key and the admin key together, and **expires after fifteen minutes**, because links land in transcripts
-and logs that outlive them. An expired link answers `410` and says to read the message again; a
+signed with the inbox's key and `LINK_KEY`, a secret the Worker keeps only for this, and **expires
+after fifteen minutes**, because links land in transcripts and logs that outlive them. An expired link answers `410` and says to read the message again; a
 purged attachment answers `410` and says so; a tampered link answers `404` and nothing else.
 
 Rotating the inbox's key revokes every link it minted, and only its own. Deleting the inbox does the
-same. Rotating the admin key revokes every outstanding link, for every inbox. Message lists carry attachment names, types and sizes but no links — read the message to get
-those. Webhook payloads carry them too.
+same. Rotating `LINK_KEY` revokes every outstanding link, for every inbox; rotating the admin key
+leaves links alone. Message lists carry attachment names, types and sizes but no links — read the
+message to get those. Webhook payloads carry them too.
 
 ### Rejected mail
 

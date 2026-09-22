@@ -5,6 +5,7 @@ export interface Env {
   WEBHOOKS: Queue<WebhookJob>;
   RETENTION_DAYS: string;
   ADMIN_KEY: string;
+  LINK_KEY: string; // signs attachment links and nothing else; see src/attachments.ts
   API_DOMAIN: string; // the Worker's hostname; attachment links are https://<this>/attachments/…
 }
 

@@ -19,14 +19,19 @@ The setup command:
 - writes `wrangler.jsonc` (gitignored). The hostname is optional: it serves the API on that hostname
   as a custom domain. Leave it out to use the Worker's `workers.dev` URL,
 - applies the database schema and deploys the Worker,
-- generates an `ADMIN_KEY` and saves it to `.dev.vars` (gitignored), along with `API_URL`, the address
-  the Worker is served on. `wrangler dev` uses this file too. Load it with `source .dev.vars`.
+- generates an `ADMIN_KEY` and a `LINK_KEY`, sets both as Worker secrets and saves them to
+  `.dev.vars` (gitignored), along with `API_URL`, the address the Worker is served on. `wrangler dev`
+  uses this file too. Load it with `source .dev.vars`.
 
-Setup is safe to re-run. It keeps existing resources, data and the `ADMIN_KEY` in `.dev.vars`. To
-rotate the admin key, delete that line and re-run. The old key stops working at once, so update
-anything that uses it, such as an MCP connection, and every outstanding attachment link stops working
-too: links are signed with the admin key, and at most fifteen minutes of them are ever live. After
-pulling updates, re-run it to redeploy.
+Setup is safe to re-run. It keeps existing resources, data and both keys in `.dev.vars`. To rotate a
+key, delete its line and re-run:
+
+- **`ADMIN_KEY`**: the old key stops working at once, so update anything that uses it, such as an MCP
+  connection. Nothing else changes.
+- **`LINK_KEY`**: every outstanding attachment link stops working — at most fifteen minutes of them
+  are ever live. Rotate it only if you think it has leaked.
+
+After pulling updates, re-run it to redeploy.
 
 **Upgrading an existing install:** this release needs `API_DOMAIN` to mint attachment links. Re-run
 setup with your API hostname, `npm run setup <api hostname>`: it adds `API_DOMAIN` to the `vars` in
@@ -70,6 +75,7 @@ Worker, so check that step in the dashboard.
 |---|---|---|---|
 | `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `0` | Mail older than this many days is [purged](concepts.md#purging) daily at 03:00 UTC, permanently, with its files. Messages only. `0` keeps mail forever. |
 | `ADMIN_KEY` | Worker secret, plus `.dev.vars` locally | set by setup | Admin API key |
+| `LINK_KEY` | Worker secret, plus `.dev.vars` locally | set by setup | Signs attachment links and nothing else. It isn't in D1, so a copy of the database alone can't forge a link. |
 | `API_DOMAIN` | `vars` in `wrangler.jsonc` | set by setup | The Worker's hostname, without `https://`; attachment links are `https://<API_DOMAIN>/attachments/…`. Cloudflare serves every Worker hostname over HTTPS. |
 | `API_URL` | `.dev.vars` locally | set by setup | The same address as a full URL, for you and your agents to call the API with |
 
