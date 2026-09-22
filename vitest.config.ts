@@ -1,5 +1,5 @@
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig(async () => {
   const migrations = await readD1Migrations("./migrations");
@@ -10,6 +10,7 @@ export default defineConfig(async () => {
         miniflare: { bindings: { ADMIN_KEY: "test-admin-key", TEST_MIGRATIONS: migrations } },
       }),
     ],
-    test: { setupFiles: ["./test/setup.ts"] },
+    // `.claude/` holds git worktrees of this repo, whose test files are copies of these.
+    test: { setupFiles: ["./test/setup.ts"], exclude: [...configDefaults.exclude, "**/.claude/**"] },
   };
 });
