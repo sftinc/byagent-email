@@ -1,5 +1,6 @@
 import { hmacSha256, randomToken, uuidv7 } from "./crypto";
 import type { Env, Inbox, Result, WebhookJob } from "./env";
+import { mintAttachmentUrl } from "./attachments";
 import { loadMessage } from "./mail";
 import { BAD_BEARER, BAD_NAME, parseBearer, parseName } from "./validate";
 
@@ -71,7 +72,7 @@ export async function restoreWebhook(env: Env, inbox: Inbox, id: string): Promis
 export async function deliverWebhook(job: WebhookJob, env: Env, attempt: number): Promise<boolean> {
   // Skips the job when the webhook or the message has been deleted since it was queued.
   const hook = await env.DB.prepare(
-    `SELECT w.url, w.secret, w.bearer, w.inbox_id, i.address, m.direction, m.status, m.status_reason FROM webhooks w
+    `SELECT w.url, w.secret, w.bearer, w.inbox_id, i.address, i.name, i.key_hash, m.direction, m.status, m.status_reason FROM webhooks w
      JOIN inboxes i ON i.id = w.inbox_id
      JOIN messages m ON m.id = ? AND m.inbox_id = w.inbox_id AND m.deleted_at IS NULL
      WHERE w.id = ? AND w.deleted_at IS NULL`,
@@ -83,6 +84,8 @@ export async function deliverWebhook(job: WebhookJob, env: Env, attempt: number)
       bearer: string | null;
       inbox_id: string;
       address: string;
+      name: string | null;
+      key_hash: string;
       direction: string;
       status: string;
       status_reason: string | null;
@@ -107,7 +110,13 @@ export async function deliverWebhook(job: WebhookJob, env: Env, attempt: number)
     status,
     status_reason,
     ...rest,
-    attachments: attachments.map((a, index) => ({ index, ...a })),
+    attachments: await Promise.all(
+      attachments.map(async (a, index) => ({
+        index,
+        ...a,
+        url: await mintAttachmentUrl(env, { id: hook.inbox_id, address: hook.address, name: hook.name, key_hash: hook.key_hash, deleted_at: null }, job.messageId, index),
+      })),
+    ),
   };
   const body = JSON.stringify({ event: job.status ? "status" : "mail", inbox: hook.address, message });
   const timestamp = String(Date.now());

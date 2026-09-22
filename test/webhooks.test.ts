@@ -164,6 +164,25 @@ describe("webhook delivery", () => {
     });
   });
 
+  it("links each attachment in the payload, and the link works", async () => {
+    const inbox = await createInbox("agent");
+    const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string };
+    await receive(eml({ attachment: { filename: "a.txt", content: "A" } }), inbox.address, { WEBHOOKS: { sendBatch: vi.fn() } as any });
+    const row = await env.DB.prepare("SELECT id FROM messages").first<{ id: string }>();
+    const batch = createMessageBatch("agent-inbox-webhooks", [
+      { id: "job-1", timestamp: Date.now(), attempts: 1, body: { webhookId: hook.id, messageId: row!.id } },
+    ]);
+    const fetchMock = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+    await handleQueue(batch, env);
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const { message } = JSON.parse(init.body as string);
+    expect(message.attachments[0]).toMatchObject({ index: 0, filename: "a.txt", url: expect.stringMatching(/\/attachments\/[A-Za-z0-9_-]{72}$/) });
+    vi.unstubAllGlobals(); // the link is fetched through the app, not through the stubbed fetch
+    expect(await (await api(new URL(message.attachments[0].url).pathname)).text()).toBe("A\n");
+  });
+
   it("carries the row's status in the payload", async () => {
     const inbox = await createInbox("agent");
     const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string; secret: string };
