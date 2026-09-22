@@ -60,6 +60,7 @@ Worker, so check that step in the dashboard.
 |---|---|---|---|
 | `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `0` | Mail older than this many days is [purged](concepts.md#purging) daily at 03:00 UTC, permanently, with its files. Messages only. `0` keeps mail forever. |
 | `ADMIN_KEY` | Worker secret, plus `.dev.vars` locally | set by setup | Admin API key |
+| `API_URL` | Worker secret, plus `.dev.vars` locally | set by setup | The Worker's own URL; attachment links are minted under it. Re-run setup, or `npx wrangler secret put API_URL`, after changing the hostname. |
 
 Without a hostname the Worker is served on a `workers.dev` URL, `https://agent-inbox.<your
 subdomain>.workers.dev`, and setup turns that on explicitly (`"workers_dev": true` in

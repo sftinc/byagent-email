@@ -41,7 +41,8 @@ curl -X POST $URL/webhooks/01a0…/restore -H "Authorization: Bearer $API_KEY"
                "to": [{ "name": "", "address": "claude@example.com" }],
                "subject": "…", "date": "…", "text": "…",
                "attachments": [{ "index": 0, "filename": "a.pdf", "type": "application/pdf",
-                                 "size": 1234, "disposition": "attachment" }] } }
+                                 "size": 1234, "disposition": "attachment",
+                                 "url": "https://api.example.com/attachments/…" }] } }
 ```
 
 | Field | |
@@ -51,11 +52,15 @@ curl -X POST $URL/webhooks/01a0…/restore -H "Authorization: Bearer $API_KEY"
 | `message.status` | For `"mail"`: `"received"`. For `"status"`: `"bounced"`, `"complained"`, `"rejected"` or `"failed"` — whichever ended the send. `"delivered"` and `"deferred"` never fire a webhook: delivered needs no interruption, and deferred resolves itself. |
 | `message.status_reason` | Why the status is what it is; `null` when there's nothing to add. |
 
+Each attachment carries a `url` that fetches its bytes for fifteen minutes with no key — see
+[Attachment links](concepts.md#attachment-links). A receiver that was down through the retry window
+will find the link expired; the message is still there to read.
+
 A status delivery carries the same message shape as an arrival — same fields, same attachment list —
 just with `event: "status"` and `direction: "out"` instead.
 
 It leaves out `html`, `cc`, `bcc` and the full header list, to stay small. Fetch
-[`GET /messages/:id`](agent-api.md#read-a-message) for those, and for attachment downloads. Note that
+[`GET /messages/:id`](agent-api.md#read-a-message) for those; attachments are fetched by their `url`. Note that
 fetching marks the message read.
 
 ## Verifying a delivery

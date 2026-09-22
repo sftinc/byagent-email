@@ -11,12 +11,14 @@ export API_KEY=…                          # from inbox creation, shown once
 curl -H "Authorization: Bearer $API_KEY" "$URL/messages?unread=true"
 ```
 
+The same inbox is available as MCP tools — see [MCP](mcp.md).
+
 | Method | Path | |
 |---|---|---|
 | `POST` | `/send` | Send a message, optionally as a reply |
 | `GET` | `/messages` | List messages, newest first, 20 per page |
 | `GET` | `/messages/:id` | Read one in full; marks it read |
-| `GET` | `/messages/:id/attachments/:index` | Download an attachment |
+| `GET` | `/attachments/:token` | Fetch an attachment by the link on a read message; no key |
 | `POST` | `/messages/:id/unread` | Put it back in the unread list |
 | `DELETE` | `/messages/:id` | Delete |
 | `POST` | `/messages/:id/restore` | Undo a delete |
@@ -134,7 +136,7 @@ curl $URL/messages/01a0… -H "Authorization: Bearer $API_KEY"
   "subject": "Hello", "date": "2026-09-19T21:34:57.000Z",
   "text": "Hi there\n", "html": null,
   "attachments": [{ "index": 0, "filename": "a.pdf", "type": "application/pdf",
-                    "size": 1234, "disposition": "attachment" }],
+                    "size": 1234, "disposition": "attachment", "url": "https://api.example.com/attachments/…" }],
   "headers": [{ "key": "subject", "value": "Hello" }],
   "direction": "in", "status": "received", "status_reason": null,
   "created_at": 1789853699757, "updated_at": 1789853712004, "read_at": 1789853712004, "deleted_at": null }
@@ -144,22 +146,28 @@ curl $URL/messages/01a0… -H "Authorization: Bearer $API_KEY"
 |---|---|
 | `status` | `received` or `rejected` for received mail; `sent`, `delivered`, `deferred`, `bounced`, `complained`, `rejected` or `failed` for sent mail — see [Status](concepts.md#status) |
 | `status_reason` | why the status is what it is, or `null` when there is nothing to explain |
+| `mark_read` (query) | `?mark_read=false` reads without marking the message read |
 
-**Reading marks the message read**, keeping the time of the first read. If you fail after reading one
-and want it back in the queue, `POST /messages/:id/unread`.
+Each attachment carries a `url` — see [Attachment links](concepts.md#attachment-links).
+
+**Reading marks the message read**, keeping the time of the first read, unless `?mark_read=false`.
+If you fail after reading one and want it back in the queue, `POST /messages/:id/unread`.
 
 A deleted message still reads, and shows its `deleted_at`. Its `from` comes from the email's headers
 and isn't verified, so don't treat it as proof of who sent it.
 
 ## Download an attachment
 
+Read the message, then follow the `url` on the attachment — within fifteen minutes, and with no key:
+
 ```bash
-curl -OJ $URL/messages/01a0…/attachments/0 -H "Authorization: Bearer $API_KEY"
+LINK=$(curl -s $URL/messages/01a0… -H "Authorization: Bearer $API_KEY" | jq -r '.attachments[0].url')
+curl -OJ "$LINK"
 ```
 
-The `index` is the attachment's position in the message's `attachments`. The response carries the
-original `Content-Type` and filename. An attachment with a `content_id` and
-`"disposition": "inline"` is an inline image from the HTML body, not a real attachment.
+The response carries the original `Content-Type` and filename. An attachment with a `content_id`
+and `"disposition": "inline"` is an inline image from the HTML body, not a real attachment. See
+[Attachment links](concepts.md#attachment-links) for expiry and revocation.
 
 ## Delete
 
@@ -179,6 +187,8 @@ Every error is `{"error":"…"}` with a status:
 |---|---|
 | 400 | bad request: a missing field, an invalid value, or `reply_to_id` that isn't yours |
 | 401 | missing or wrong API key |
+| 403 | the key is for a different inbox than `?inbox=` names |
 | 404 | no such message, webhook, or nothing to restore |
+| 410 | an attachment link that has expired, or whose attachment was purged |
 | 413 | the message is larger than 5 MiB |
 | 502 | Cloudflare refused the send; `error` is its code, and the body also carries the failed message's `id` |

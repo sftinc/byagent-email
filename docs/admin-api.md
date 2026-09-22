@@ -25,6 +25,19 @@ curl -H "Authorization: Bearer $ADMIN_KEY" $URL/admin/inboxes
 
 Routes take the inbox `id`, from creation or the list.
 
+## Acting on an inbox's mail
+
+The admin key can use every route in the [Agent API](agent-api.md) by naming the inbox with
+`?inbox=`, an address or an id:
+
+```bash
+curl -H "Authorization: Bearer $ADMIN_KEY" "$URL/messages?inbox=claude@example.com&unread=true"
+```
+
+Without `?inbox=` the call is refused — the admin key names no inbox, and nothing is guessed. Each
+such call is logged as `{"event":"admin_access",…}` with the route and the inbox, since it writes
+no row of its own. The same holds for the admin key over [MCP](mcp.md).
+
 ## Create an inbox
 
 ```bash

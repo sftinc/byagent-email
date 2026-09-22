@@ -72,6 +72,7 @@ Purge is the one permanent operation, and the only thing that frees storage.
   [Configuration](setup.md#configuration).
 - Rejected mail (see below) is always purged after 30 days, regardless of `RETENTION_DAYS`. No
   inbox purge can reach it, since it belongs to no inbox.
+- Rotating an inbox's key (`rotate-key`) revokes its outstanding attachment links along with the key.
 
 See [`POST /admin/inboxes/:id/purge`](admin-api.md#purge).
 
@@ -88,6 +89,24 @@ its own prefix:
 
 Sent mail is stored the same way. D1 holds what lists and filters need: sender, recipients, subject,
 attachment metadata and the timestamps. The raw email is not kept.
+
+### Attachment links
+
+Attachment bytes are fetched by link, not by API call. Reading a message — over REST or MCP — puts a
+`url` on each attachment:
+
+```
+https://api.example.com/attachments/AZk4sBxEegKOMV1_mgscLQGZOMQ_Knwxn16KGyw9Tl8AAGqytWZc83HWsRjOuZfJdw3hEFGk
+```
+
+The link needs no key, so anything holding it can follow it: a script, a browser, a model. It is
+signed with the inbox's key and **expires after fifteen minutes**, because links land in transcripts
+and logs that outlive them. An expired link answers `410` and says to read the message again; a
+purged attachment answers `410` and says so; a tampered link answers `404` and nothing else.
+
+Rotating the inbox's key revokes every link it minted, and only its own. Deleting the inbox does the
+same. Message lists carry attachment names, types and sizes but no links — read the message to get
+those. Webhook payloads carry them too.
 
 ### Rejected mail
 

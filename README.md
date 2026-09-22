@@ -19,6 +19,7 @@ Email Service. D1, R2 and Queues store the rest.
 | [Setup](docs/setup.md) | Deploying it, the Cloudflare dashboard steps, configuration |
 | [Admin API](docs/admin-api.md) | Creating and managing inboxes and their keys |
 | [Agent API](docs/agent-api.md) | Sending, reading, replying: the file to give your agent |
+| [MCP](docs/mcp.md) | The inbox as tools, for Claude Code, Cursor and any MCP client |
 | [Webhooks](docs/webhooks.md) | Push instead of polling, payload and signature |
 | [Concepts](docs/concepts.md) | IDs, timestamps, deleting and purging, storage, limits |
 
@@ -85,6 +86,8 @@ The API is at <api url>, and the admin key is <admin key>.
 3. Send me a test message at <your address>.
 ```
 
+Or skip the docs and connect the agent over MCP: `claude mcp add --transport http inbox <api url>/mcp --header "Authorization: Bearer <api_key>"`. See [MCP](docs/mcp.md).
+
 `<api url>` and `<admin key>` are `API_URL` and `ADMIN_KEY` in `.dev.vars`
 (`source .dev.vars && echo $API_URL $ADMIN_KEY`). `<address>` is any address on a domain you
 set up above, and `<name>` is the display name its mail goes out as — `Claude
@@ -99,12 +102,13 @@ Admin calls use `ADMIN_KEY`; agent calls use an inbox's `api_key`.
 | `POST` | `/send` | Send mail, to named or plain addresses, optionally as a threaded reply |
 | `GET` | `/messages` | List, filter and page through mail |
 | `GET` | `/messages/:id` | Read one in full; marks it read |
-| `GET` | `/messages/:id/attachments/:index` | Download an attachment |
+| `GET` | `/attachments/:token` | Fetch an attachment by its link; no key needed |
 | `POST` | `/messages/:id/unread` | Put it back in the unread list |
 | `DELETE` / `POST` | `/messages/:id`, `/messages/:id/restore` | Delete, undo |
 | `GET` / `POST` / `DELETE` | `/webhooks[/:id]` | Manage webhooks (`{url, name?, bearer?}`) |
 | `POST` / `GET` | `/admin/inboxes` | Create, list inboxes |
 | `PATCH` / `DELETE` / `POST` | `/admin/inboxes/:id[/restore\|/purge\|/rotate-key]` | Rename, delete, restore, purge, rotate |
+| `POST` | `/mcp` | The MCP endpoint — [MCP](docs/mcp.md) |
 | `GET` | `/health` | No key needed |
 
 ## Development
