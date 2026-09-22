@@ -24,6 +24,8 @@ describe("messages", () => {
         {
           id,
           direction: "in",
+          status: "received",
+          status_reason: null,
           from: { name: "Sender", address: "sender@example.org" },
           recipients: ["agent@email.example.com"],
           subject: "First",
@@ -39,6 +41,17 @@ describe("messages", () => {
     await api(`/messages/${id}`, { key }); // reading marks it read
     const unread = (await (await api("/messages?unread=true", { key })).json()) as { messages: any[] };
     expect(unread.messages).toEqual([]);
+  });
+
+  it("returns status on the list and on a single message", async () => {
+    const inbox = await createInbox("agent");
+    await receive(eml(), inbox.address);
+
+    const list = (await (await api("/messages", { key: inbox.api_key })).json()) as any;
+    expect(list.messages[0]).toMatchObject({ status: "received", status_reason: null });
+
+    const one = (await (await api(`/messages/${list.messages[0].id}`, { key: inbox.api_key })).json()) as any;
+    expect(one).toMatchObject({ status: "received", status_reason: null });
   });
 
   it("filters by part of the sender address, ignoring case", async () => {
@@ -103,6 +116,8 @@ describe("messages", () => {
     expect(await res.json()).toEqual({
       id,
       direction: "in",
+      status: "received",
+      status_reason: null,
       message_id: null,
       in_reply_to: null,
       references: [],

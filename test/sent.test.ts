@@ -34,6 +34,8 @@ describe("sent mail", () => {
       {
         id: sent.id,
         direction: "out",
+        status: "sent",
+        status_reason: null,
         from: { name: "", address: inbox.address },
         recipients: ["a@x.com", "b@x.com", "c@x.com"],
         subject: "Report",
@@ -53,6 +55,8 @@ describe("sent mail", () => {
     expect(await res.json()).toEqual({
       id,
       direction: "out",
+      status: "sent",
+      status_reason: null,
       message_id: "cf-123",
       in_reply_to: null,
       references: [],

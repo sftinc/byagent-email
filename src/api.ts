@@ -73,7 +73,7 @@ app.get("/messages", async (c) => {
   // Fetch one extra row to learn whether there's more in the direction we're paging.
   const cursor = after ? " AND id > ? ORDER BY id ASC" : before ? " AND id < ? ORDER BY id DESC" : " ORDER BY id DESC";
   const { results } = await c.env.DB.prepare(
-    `SELECT id, direction, from_addr, from_name, recipients, subject, attachments, created_at, read_at, deleted_at
+    `SELECT id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at, read_at, deleted_at
      FROM messages WHERE ${where}${cursor} LIMIT 21`,
   )
     .bind(...params, ...(after || before ? [after || before] : []))
@@ -105,10 +105,18 @@ app.get("/messages", async (c) => {
 function findMessage(env: Env, inboxId: string, id: string) {
   // Deleted messages are still readable by id; only changing them 404s.
   return env.DB.prepare(
-    "SELECT direction, attachments, created_at, read_at, deleted_at FROM messages WHERE id = ? AND inbox_id = ?",
+    "SELECT direction, status, status_reason, attachments, created_at, read_at, deleted_at FROM messages WHERE id = ? AND inbox_id = ?",
   )
     .bind(id, inboxId)
-    .first<{ direction: string; attachments: string; created_at: number; read_at: number | null; deleted_at: number | null }>();
+    .first<{
+      direction: string;
+      status: string;
+      status_reason: string | null;
+      attachments: string;
+      created_at: number;
+      read_at: number | null;
+      deleted_at: number | null;
+    }>();
 }
 
 // Reading a message marks it read, keeping the first time. POST /messages/:id/unread undoes it.
@@ -128,6 +136,8 @@ app.get("/messages/:id", async (c) => {
     ...stored,
     attachments: stored.attachments.map((a, index) => ({ index, ...a })),
     direction: row.direction,
+    status: row.status,
+    status_reason: row.status_reason,
     created_at: row.created_at,
     read_at: readAt,
     deleted_at: row.deleted_at,

@@ -86,7 +86,7 @@ curl "$URL/messages?unread=true" -H "Authorization: Bearer $API_KEY"
 
 ```json
 { "messages": [
-    { "id": "01a0…", "direction": "in",
+    { "id": "01a0…", "direction": "in", "status": "received", "status_reason": null,
       "from": { "name": "Bob", "address": "bob@example.org" },
       "recipients": ["claude@example.com"],
       "subject": "Hello", "attachments": [],
@@ -134,8 +134,14 @@ curl $URL/messages/01a0… -H "Authorization: Bearer $API_KEY"
   "attachments": [{ "index": 0, "filename": "a.pdf", "type": "application/pdf",
                     "size": 1234, "disposition": "attachment" }],
   "headers": [{ "key": "subject", "value": "Hello" }],
-  "direction": "in", "created_at": 1789853699757, "read_at": 1789853712004, "deleted_at": null }
+  "direction": "in", "status": "received", "status_reason": null,
+  "created_at": 1789853699757, "read_at": 1789853712004, "deleted_at": null }
 ```
+
+| Field | |
+|---|---|
+| `status` | `received`, `bounced` or `rejected` for received mail; `sent` or `failed` for sent mail |
+| `status_reason` | why the status is what it is, or `null` when there is nothing to explain |
 
 **Reading marks the message read**, keeping the time of the first read. If you fail after reading one
 and want it back in the queue, `POST /messages/:id/unread`.
