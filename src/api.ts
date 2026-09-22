@@ -2,13 +2,13 @@ import { Hono } from "hono";
 import { except } from "hono/combine";
 import { createMiddleware } from "hono/factory";
 import { admin } from "./admin";
-import { randomToken, sha256, uuidv7 } from "./crypto";
+import { sha256 } from "./crypto";
 import type { Env, Inbox } from "./env";
 import { type Attachment, loadAttachment } from "./mail";
 import { deleteMessage, findMessage, listMessages, markUnread, readMessage, restoreMessage } from "./messages";
 import { sendMail } from "./send";
 import { reply } from "./reply";
-import { BAD_BEARER, BAD_NAME, parseBearer, parseName } from "./validate";
+import { createWebhook, deleteWebhook, listWebhooks, restoreWebhook } from "./webhooks";
 
 type App = { Bindings: Env; Variables: { inbox: Inbox } };
 
@@ -87,65 +87,11 @@ app.delete("/messages/:id", async (c) => reply(c, await deleteMessage(c.env, c.g
 
 app.post("/messages/:id/restore", async (c) => reply(c, await restoreMessage(c.env, c.get("inbox"), c.req.param("id"))));
 
-// How many webhooks the inbox has, against the cap of 10.
-async function webhookCount(env: Env, inboxId: string): Promise<number> {
-  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM webhooks WHERE inbox_id = ? AND deleted_at IS NULL")
-    .bind(inboxId)
-    .first<{ n: number }>();
-  return row?.n ?? 0;
-}
-
-const TOO_MANY = "At most 10 webhooks per inbox";
-
-app.get("/webhooks", async (c) => {
-  const deleted = c.req.query("deleted") === "true";
-  const { results } = await c.env.DB.prepare(
-    `SELECT id, name, url, succeeded_at, failed_at${deleted ? ", deleted_at" : ""} FROM webhooks WHERE inbox_id = ? AND deleted_at IS ${deleted ? "NOT NULL" : "NULL"}`,
-  )
-    .bind(c.get("inbox").id)
-    .all();
-  return c.json({ webhooks: results });
-});
-
-app.post("/webhooks", async (c) => {
-  type WebhookBody = { url?: unknown; name?: unknown; bearer?: unknown };
-  const body = await c.req.json<WebhookBody>().catch(() => ({}) as WebhookBody);
-  const url = typeof body.url === "string" && URL.canParse(body.url) ? new URL(body.url) : null;
-  if (url?.protocol !== "https:") return c.json({ error: "`url` must be an https:// URL" }, 400);
-  const name = parseName(body.name);
-  if (name === undefined) return c.json({ error: BAD_NAME }, 400);
-  const bearer = parseBearer(body.bearer);
-  if (bearer === undefined) return c.json({ error: BAD_BEARER }, 400);
-  if ((await webhookCount(c.env, c.get("inbox").id)) >= 10) return c.json({ error: TOO_MANY }, 400);
-  const id = uuidv7();
-  const secret = randomToken();
-  await c.env.DB.prepare(
-    "INSERT INTO webhooks (id, inbox_id, name, url, secret, bearer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-  )
-    .bind(id, c.get("inbox").id, name, url.href, secret, bearer, Date.now())
-    .run();
-  return c.json({ id, name, url: url.href, secret }, 201);
-});
-
-app.delete("/webhooks/:id", async (c) => {
-  const { meta } = await c.env.DB.prepare(
-    "UPDATE webhooks SET deleted_at = ? WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL",
-  )
-    .bind(Date.now(), c.req.param("id"), c.get("inbox").id)
-    .run();
-  if (meta.changes === 0) return c.json({ error: "Webhook not found" }, 404);
-  return c.json({ ok: true });
-});
-
-app.post("/webhooks/:id/restore", async (c) => {
-  const id = c.req.param("id");
-  const found = await c.env.DB.prepare("SELECT 1 FROM webhooks WHERE id = ? AND inbox_id = ? AND deleted_at IS NOT NULL")
-    .bind(id, c.get("inbox").id)
-    .first();
-  if (!found) return c.json({ error: "Webhook not found" }, 404);
-  if ((await webhookCount(c.env, c.get("inbox").id)) >= 10) return c.json({ error: TOO_MANY }, 400);
-  await c.env.DB.prepare("UPDATE webhooks SET deleted_at = NULL WHERE id = ?").bind(id).run();
-  return c.json({ ok: true });
-});
+app.get("/webhooks", async (c) => reply(c, await listWebhooks(c.env, c.get("inbox"), c.req.query("deleted") === "true")));
+app.post("/webhooks", async (c) =>
+  reply(c, await createWebhook(c.env, c.get("inbox"), await c.req.json().catch(() => ({}))), 201),
+);
+app.delete("/webhooks/:id", async (c) => reply(c, await deleteWebhook(c.env, c.get("inbox"), c.req.param("id"))));
+app.post("/webhooks/:id/restore", async (c) => reply(c, await restoreWebhook(c.env, c.get("inbox"), c.req.param("id"))));
 
 app.post("/send", async (c) => reply(c, await sendMail(c.env, c.get("inbox"), await c.req.json<any>().catch(() => null))));

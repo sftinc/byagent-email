@@ -1,6 +1,69 @@
-import { hmacSha256 } from "./crypto";
-import type { Env, WebhookJob } from "./env";
+import { hmacSha256, randomToken, uuidv7 } from "./crypto";
+import type { Env, Inbox, Result, WebhookJob } from "./env";
 import { loadMessage } from "./mail";
+import { BAD_BEARER, BAD_NAME, parseBearer, parseName } from "./validate";
+
+// How many webhooks the inbox has, against the cap of 10.
+async function webhookCount(env: Env, inboxId: string): Promise<number> {
+  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM webhooks WHERE inbox_id = ? AND deleted_at IS NULL")
+    .bind(inboxId)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+const TOO_MANY: Result<never> = { ok: false, status: 400, error: "At most 10 webhooks per inbox" };
+const NOT_FOUND: Result<never> = { ok: false, status: 404, error: "Webhook not found" };
+const OK: Result<{ ok: true }> = { ok: true, data: { ok: true } };
+
+export async function listWebhooks(env: Env, inbox: Inbox, deleted: boolean) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, name, url, succeeded_at, failed_at${deleted ? ", deleted_at" : ""} FROM webhooks WHERE inbox_id = ? AND deleted_at IS ${deleted ? "NOT NULL" : "NULL"}`,
+  )
+    .bind(inbox.id)
+    .all();
+  return { ok: true, data: { webhooks: results } } as const;
+}
+
+export async function createWebhook(
+  env: Env,
+  inbox: Inbox,
+  body: { url?: unknown; name?: unknown; bearer?: unknown },
+): Promise<Result<{ id: string; name: string | null; url: string; secret: string }>> {
+  const url = typeof body.url === "string" && URL.canParse(body.url) ? new URL(body.url) : null;
+  if (url?.protocol !== "https:") return { ok: false, status: 400, error: "`url` must be an https:// URL" };
+  const name = parseName(body.name);
+  if (name === undefined) return { ok: false, status: 400, error: BAD_NAME };
+  const bearer = parseBearer(body.bearer);
+  if (bearer === undefined) return { ok: false, status: 400, error: BAD_BEARER };
+  if ((await webhookCount(env, inbox.id)) >= 10) return TOO_MANY;
+  const id = uuidv7();
+  const secret = randomToken();
+  await env.DB.prepare(
+    "INSERT INTO webhooks (id, inbox_id, name, url, secret, bearer, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  )
+    .bind(id, inbox.id, name, url.href, secret, bearer, Date.now())
+    .run();
+  return { ok: true, data: { id, name, url: url.href, secret } };
+}
+
+export async function deleteWebhook(env: Env, inbox: Inbox, id: string): Promise<Result<{ ok: true }>> {
+  const { meta } = await env.DB.prepare(
+    "UPDATE webhooks SET deleted_at = ? WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL",
+  )
+    .bind(Date.now(), id, inbox.id)
+    .run();
+  return meta.changes === 0 ? NOT_FOUND : OK;
+}
+
+export async function restoreWebhook(env: Env, inbox: Inbox, id: string): Promise<Result<{ ok: true }>> {
+  const found = await env.DB.prepare("SELECT 1 FROM webhooks WHERE id = ? AND inbox_id = ? AND deleted_at IS NOT NULL")
+    .bind(id, inbox.id)
+    .first();
+  if (!found) return NOT_FOUND;
+  if ((await webhookCount(env, inbox.id)) >= 10) return TOO_MANY;
+  await env.DB.prepare("UPDATE webhooks SET deleted_at = NULL WHERE id = ?").bind(id).run();
+  return OK;
+}
 
 // Returns true when the job is finished (delivered, or nothing left to deliver).
 // Logs every attempt, so a delivery that fails unattended leaves a trace. Needs `observability`
