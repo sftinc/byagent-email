@@ -17,7 +17,7 @@ All timestamps are Unix milliseconds:
 | Field | |
 |---|---|
 | `created_at` | when a message was received or sent, or an inbox created |
-| `updated_at` | last change to an inbox (rename, key rotation) or a message (e.g. marking it read) |
+| `updated_at` | last change to an inbox (rename, key rotation) or a message (e.g. marking it read, or a delivery status change) |
 | `read_at` | when an agent first read a message; `null` until then |
 | `deleted_at` | when something was deleted; `null` while live |
 
@@ -27,18 +27,24 @@ A message's `date` is the exception: it's the email's own Date header, as an ISO
 
 Every message has a `status`:
 
-| `status` | Meaning |
-|---|---|
-| `received` | mail delivered to an inbox |
-| `bounced` | a delivery status notification — mail that came back |
-| `rejected` | mail for an address no inbox holds; no `inbox_id`, no stored body |
-| `sent` | mail the provider accepted |
-| `failed` | mail the provider refused; `status_reason` carries its code |
+| `status` | `direction` | Meaning |
+|---|---|---|
+| `received` | in | mail delivered to an inbox |
+| `rejected` | in | no inbox holds the address; `inbox_id` is null |
+| `sent` | out | Cloudflare accepted it; no delivery event yet |
+| `delivered` | out | the recipient's server accepted it |
+| `deferred` | out | temporary failure, retries pending |
+| `bounced` | out | permanent failure, or retries exhausted |
+| `complained` | out | the recipient marked it as spam |
+| `rejected` | out | blocked by policy before delivery |
+| `failed` | out | `EMAIL.send` threw, or an internal delivery error |
 
-Bounce detection is heuristic: `status_reason` records which signal matched, so a wrongly flagged
-message leaves a trail. Automatic replies also use a null return path, but ones that identify
-themselves per RFC 3834 (`Auto-Submitted: auto-replied`) are excluded, so an out-of-office or
-"ticket received" reply is `received`, not `bounced`.
+`rejected` is the only word appearing in both directions: inbound it means no inbox holds the
+address, outbound it means policy blocked the send before Cloudflare would even try it.
+
+Delivery events are per-recipient, and a multi-recipient send tracks one `status` for the whole
+message: the last event processed wins. A bounce to one recipient can be masked by another
+recipient's later `delivered`.
 
 ## Deleting
 

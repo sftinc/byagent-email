@@ -142,7 +142,7 @@ curl $URL/messages/01a0… -H "Authorization: Bearer $API_KEY"
 
 | Field | |
 |---|---|
-| `status` | `received` or `bounced` for received mail; `sent` or `failed` for sent mail |
+| `status` | `received` or `rejected` for received mail; `sent`, `delivered`, `deferred`, `bounced`, `complained`, `rejected` or `failed` for sent mail — see [Status](concepts.md#status) |
 | `status_reason` | why the status is what it is, or `null` when there is nothing to explain |
 
 **Reading marks the message read**, keeping the time of the first read. If you fail after reading one

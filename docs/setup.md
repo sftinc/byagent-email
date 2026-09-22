@@ -15,7 +15,7 @@ npm run setup api.example.com
 
 The setup command:
 
-- creates the D1 database, R2 bucket and queue,
+- creates the D1 database, R2 bucket and queues,
 - writes `wrangler.jsonc` (gitignored). The hostname is optional: it serves the API on that hostname
   as a custom domain. Leave it out to use the Worker's `workers.dev` URL,
 - applies the database schema and deploys the Worker,
@@ -24,7 +24,9 @@ The setup command:
 
 Setup is safe to re-run. It keeps existing resources, data and the `ADMIN_KEY` in `.dev.vars`. To
 rotate the admin key, delete that line and re-run. After pulling updates, re-run it to apply any new
-database migrations and redeploy.
+database migrations and redeploy. An install that predates delivery events won't get the
+`agent-inbox-email-events` consumer added to its `wrangler.jsonc` by re-running setup — setup never
+rewrites that file — so add the `queues.consumers` entry from `wrangler.example.jsonc` to it by hand.
 
 ## Each email domain
 
@@ -36,6 +38,10 @@ In the Cloudflare dashboard:
    **apex domain > Settings > Subdomains**.
 3. In Email Routing's rules for the domain, set the **catch-all** rule to
    **Send to a Worker > agent-inbox**.
+4. **Queues > agent-inbox-email-events > Subscriptions > Subscribe to events**: source "Email
+   Sending", this domain, all six `message.*` events.
+
+Without step 4, sent mail stays `sent` — you will not see deliveries, bounces or complaints.
 
 Enabling Email Routing replaces the domain's MX records, so use a domain (or subdomain) that doesn't
 already receive mail.

@@ -24,10 +24,11 @@ if (apiHost && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(apiHost)) throw new Error(`Not a
 
 run("npx wrangler whoami"); // fails early when not logged in
 
-console.log("Creating D1 database, R2 bucket and queue...");
+console.log("Creating D1 database, R2 bucket and queues...");
 tryRun(`npx wrangler d1 create ${NAME}`);
 tryRun(`npx wrangler r2 bucket create ${NAME}`);
 tryRun(`npx wrangler queues create ${NAME}-webhooks`);
+tryRun(`npx wrangler queues create ${NAME}-email-events`);
 const { uuid } = JSON.parse(run(`npx wrangler d1 info ${NAME} --json`));
 
 if (existsSync("wrangler.jsonc")) {
@@ -72,4 +73,8 @@ For each email domain, in the Cloudflare dashboard:
   1. Email > Email Sending > Onboard Domain
   2. If it is a subdomain: Email > Email Routing > (apex domain) > Settings > Subdomains: add it
   3. Email Routing rules for the domain: set the catch-all rule to "Send to a Worker" > ${NAME}
+  4. Queues > agent-inbox-email-events > Subscriptions > Subscribe to events:
+     source "Email Sending", this domain, all six message.* events
+
+Without step 4, sent mail stays 'sent' — you will not see deliveries, bounces or complaints.
 `);
