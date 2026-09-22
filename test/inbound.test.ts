@@ -54,4 +54,40 @@ describe("incoming mail", () => {
     const row = await env.DB.prepare("SELECT status, status_reason FROM messages").first();
     expect(row).toEqual({ status: "received", status_reason: null });
   });
+
+  const bounceStatus = () =>
+    env.DB.prepare("SELECT status, status_reason FROM messages").first<{ status: string; status_reason: string | null }>();
+
+  it("flags a bounce with a null return path", async () => {
+    await createInbox("agent");
+    await receive(eml({ headers: "Return-Path: <>\r\n" }), "agent@email.example.com");
+    expect(await bounceStatus()).toEqual({ status: "bounced", status_reason: "null-return-path" });
+  });
+
+  it("flags a bounce sent as a delivery status report", async () => {
+    await createInbox("agent");
+    const raw =
+      "From: Mail Delivery System <noreply@example.org>\r\n" +
+      "To: agent@email.example.com\r\n" +
+      "Subject: Undelivered Mail Returned to Sender\r\n" +
+      "Date: Sat, 19 Sep 2026 10:00:00 +0000\r\n" +
+      "MIME-Version: 1.0\r\n" +
+      'Content-Type: multipart/report; report-type=delivery-status; boundary=B\r\n\r\n' +
+      "--B\r\nContent-Type: text/plain\r\n\r\nDelivery failed\r\n" +
+      "--B--\r\n";
+    await receive(raw, "agent@email.example.com");
+    expect(await bounceStatus()).toEqual({ status: "bounced", status_reason: "multipart/report" });
+  });
+
+  it("flags a bounce from the mailer daemon", async () => {
+    await createInbox("agent");
+    await receive(eml({ from: "MAILER-DAEMON@example.org" }), "agent@email.example.com");
+    expect(await bounceStatus()).toEqual({ status: "bounced", status_reason: "mailer-daemon" });
+  });
+
+  it("does not flag ordinary mail as a bounce", async () => {
+    await createInbox("agent");
+    await receive(eml(), "agent@email.example.com");
+    expect(await bounceStatus()).toEqual({ status: "received", status_reason: null });
+  });
 });

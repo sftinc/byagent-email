@@ -1,7 +1,7 @@
 import PostalMime from "postal-mime";
 import { uuidv7 } from "./crypto";
 import type { Env } from "./env";
-import { addresses, fromEmail, saveMessage } from "./mail";
+import { addresses, bounceReason, fromEmail, saveMessage } from "./mail";
 
 export async function handleEmail(message: ForwardableEmailMessage, env: Env): Promise<void> {
   const inbox = await env.DB.prepare("SELECT id FROM inboxes WHERE address = ? AND deleted_at IS NULL")
@@ -16,15 +16,18 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env): P
   const email = await PostalMime.parse(await new Response(message.raw).arrayBuffer());
   const { message: stored, files } = fromEmail(email);
   const id = uuidv7();
+  const reason = bounceReason(email);
 
   await saveMessage(env, inbox.id, id, stored, files);
   await env.DB.prepare(
-    `INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, created_at)
-     VALUES (?, ?, 'in', 'received', ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at)
+     VALUES (?, ?, 'in', ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
       inbox.id,
+      reason ? "bounced" : "received",
+      reason,
       email.from?.address ?? message.from,
       email.from?.name ?? "",
       [...addresses(email.to), ...addresses(email.cc)].join(",").toLowerCase(),

@@ -49,6 +49,18 @@ export function addresses(list: Address[] = []): string[] {
   return contacts(list).map((c) => c.address);
 }
 
+// A bounce is a delivery status notification (RFC 3464): a null return path, sent as a
+// multipart/report, from the mailer daemon. Any one of the three is enough. The signal that
+// matched is stored, so a wrongly flagged message leaves a trail.
+export function bounceReason(email: Email): string | null {
+  const header = (key: string) =>
+    (email.headers ?? []).find((h) => h.key.toLowerCase() === key)?.value.toLowerCase() ?? "";
+  if (header("return-path") === "<>") return "null-return-path";
+  if (header("content-type").includes("report-type=delivery-status")) return "multipart/report";
+  if (/^(mailer-daemon|postmaster)@/i.test(email.from?.address ?? "")) return "mailer-daemon";
+  return null;
+}
+
 // Turns a parsed email into what we store: the message, and the attachment bytes.
 export function fromEmail(email: Email): { message: StoredMessage; files: Uint8Array[] } {
   const files = email.attachments.map((a) =>
