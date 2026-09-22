@@ -96,7 +96,10 @@ export async function listDomains(env: Env) {
 export async function renameInbox(env: Env, inbox: Inbox, name: unknown): Promise<Result<{ id: string; address: string; name: string | null }>> {
   const parsed = parseName(name);
   if (parsed === undefined) return { ok: false, status: 400, error: BAD_NAME };
-  await env.DB.prepare("UPDATE inboxes SET name = ?, updated_at = ? WHERE id = ?").bind(parsed, Date.now(), inbox.id).run();
+  const { meta } = await env.DB.prepare("UPDATE inboxes SET name = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL")
+    .bind(parsed, Date.now(), inbox.id)
+    .run();
+  if (meta.changes === 0) return { ok: false, status: 404, error: "Inbox not found" };
   return { ok: true, data: { id: inbox.id, address: inbox.address, name: parsed } };
 }
 
@@ -139,8 +142,9 @@ export async function purgeInbox(env: Env, inbox: Inbox, confirm: boolean): Prom
 // Invalidates the key a running agent holds, and every attachment link signed with it.
 export async function rotateInboxKey(env: Env, inbox: Inbox): Promise<Result<{ api_key: string }>> {
   const apiKey = randomToken();
-  await env.DB.prepare("UPDATE inboxes SET key_hash = ?, updated_at = ? WHERE id = ?")
+  const { meta } = await env.DB.prepare("UPDATE inboxes SET key_hash = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL")
     .bind(await sha256(apiKey), Date.now(), inbox.id)
     .run();
+  if (meta.changes === 0) return { ok: false, status: 404, error: "Inbox not found" };
   return { ok: true, data: { api_key: apiKey } };
 }
