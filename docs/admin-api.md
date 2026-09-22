@@ -102,6 +102,8 @@ curl $URL/admin/rejected -H "Authorization: Bearer $ADMIN_KEY"
 # → {"rejected":[{"id":"01a0…","from_addr":"sender@example.org","recipients":"nobody@example.com","subject":"Hi","status_reason":"unknown_recipient","created_at":1789…}]}
 ```
 
-Mail sent to an address no inbox holds ([Storage](concepts.md#rejected-mail)). No agent can see these
-— they belong to no inbox — so this is the only way to read them. Returns at most the newest 100.
-These rows have no stored body, and are purged after 30 days regardless of any inbox's retention.
+No agent can see this mail — it belongs to no inbox — so this is the only way to read it. See
+[Rejected mail](concepts.md#rejected-mail).
+
+Returns at most the newest 100. These rows have no stored body, and are purged after 30 days
+regardless of any inbox's `RETENTION_DAYS`.
