@@ -47,4 +47,11 @@ describe("incoming mail", () => {
       { body: { webhookId: "w2", messageId: row!.id } },
     ]);
   });
+
+  it("stores received mail with a received status", async () => {
+    await createInbox("agent");
+    await receive(eml(), "agent@email.example.com");
+    const row = await env.DB.prepare("SELECT status, status_reason FROM messages").first();
+    expect(row).toEqual({ status: "received", status_reason: null });
+  });
 });

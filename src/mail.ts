@@ -137,8 +137,8 @@ export async function saveSent(env: Env, inbox: Inbox, message: EmailMessageBuil
 
   await saveMessage(env, inbox.id, id, stored, files);
   await env.DB.prepare(
-    `INSERT INTO messages (id, inbox_id, direction, from_addr, from_name, recipients, subject, attachments, created_at, read_at)
-     VALUES (?, ?, 'out', ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, created_at, read_at)
+     VALUES (?, ?, 'out', 'sent', ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,

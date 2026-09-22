@@ -31,13 +31,15 @@ CREATE TABLE webhooks (
 );
 
 CREATE TABLE messages (
-  id         TEXT PRIMARY KEY,
-  inbox_id   TEXT NOT NULL REFERENCES inboxes(id) ON DELETE CASCADE,
+  id            TEXT PRIMARY KEY,
+  inbox_id      TEXT REFERENCES inboxes(id) ON DELETE CASCADE,  -- null when no inbox holds the address
   -- routing
-  direction  TEXT NOT NULL,     -- 'in' (received) or 'out' (sent)
-  from_addr  TEXT NOT NULL,
-  from_name  TEXT NOT NULL,     -- '' when the sender has no display name
-  recipients TEXT NOT NULL,     -- to, cc and (for sent mail) bcc, comma-separated
+  direction     TEXT NOT NULL,     -- 'in' (received) or 'out' (sent)
+  status        TEXT NOT NULL,     -- 'received' | 'bounced' | 'rejected' (in); 'sent' | 'failed' (out)
+  status_reason TEXT,              -- why the status is what it is; null when there's nothing to explain
+  from_addr     TEXT NOT NULL,
+  from_name     TEXT NOT NULL,     -- '' when the sender has no display name
+  recipients    TEXT NOT NULL,     -- to, cc and (for sent mail) bcc, comma-separated
   -- content
   subject     TEXT,
   attachments TEXT NOT NULL,    -- [{filename, type, size, disposition}], '[]' when there are none

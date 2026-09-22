@@ -19,8 +19,8 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env): P
 
   await saveMessage(env, inbox.id, id, stored, files);
   await env.DB.prepare(
-    `INSERT INTO messages (id, inbox_id, direction, from_addr, from_name, recipients, subject, attachments, created_at)
-     VALUES (?, ?, 'in', ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, created_at)
+     VALUES (?, ?, 'in', 'received', ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,

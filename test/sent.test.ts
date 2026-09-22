@@ -123,4 +123,12 @@ describe("sent mail", () => {
     expect((await api("/send", { method: "POST", key: inbox.api_key, body }, { EMAIL: { send } as any })).status).toBe(502);
     expect(await list(inbox.api_key, "?direction=all")).toEqual([]);
   });
+
+  it("stores sent mail with a sent status", async () => {
+    const inbox = await createInbox("agent");
+    const send = vi.fn().mockResolvedValue({ messageId: "<m1@email.example.com>" });
+    await api("/send", { method: "POST", key: inbox.api_key, body: { to: "bob@example.org", subject: "Hi", text: "Hello" } }, { EMAIL: { send } as any });
+    const row = await env.DB.prepare("SELECT status, status_reason FROM messages").first();
+    expect(row).toEqual({ status: "sent", status_reason: null });
+  });
 });
