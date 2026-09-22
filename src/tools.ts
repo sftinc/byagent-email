@@ -22,6 +22,9 @@ const INBOX = {
   type: "string",
   description: "The inbox to act on: an address or an inbox id. Required with the admin key. Optional with an inbox key, which already names its inbox; naming another is an error.",
 };
+// The five inbox-management tools take only the admin key, so INBOX's "Optional with an inbox
+// key" clause is false for them; they get this instead.
+const ADMIN_INBOX = { type: "string", description: "The inbox to act on: an address or an inbox id." };
 const ID = { type: "string", description: "A message id" };
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const bool = (v: unknown): boolean => v === true;
@@ -232,7 +235,7 @@ const adminTools: Tool[] = [
     description: "Set or clear an inbox's display name for outgoing mail.",
     admin: true,
     policy: "live",
-    inputSchema: { type: "object", properties: { inbox: INBOX, name: { type: ["string", "null"], description: "Up to 100 characters; empty or null clears it" } }, required: ["inbox"] },
+    inputSchema: { type: "object", properties: { inbox: ADMIN_INBOX, name: { type: ["string", "null"], description: "Up to 100 characters; empty or null clears it" } }, required: ["inbox", "name"] },
     run: (env, inbox, args) => renameInbox(env, inbox, args.name),
   },
   {
@@ -240,7 +243,7 @@ const adminTools: Tool[] = [
     description: "Delete an inbox: its key stops working and its mail is hidden. Reversible with restore_inbox; nothing is removed.",
     admin: true,
     policy: "live",
-    inputSchema: { type: "object", properties: { inbox: INBOX }, required: ["inbox"] },
+    inputSchema: { type: "object", properties: { inbox: ADMIN_INBOX }, required: ["inbox"] },
     run: (env, inbox) => deleteInbox(env, inbox),
   },
   {
@@ -248,7 +251,7 @@ const adminTools: Tool[] = [
     description: "Undo delete_inbox, bringing its mail and webhooks back as they were.",
     admin: true,
     policy: "deleted",
-    inputSchema: { type: "object", properties: { inbox: INBOX }, required: ["inbox"] },
+    inputSchema: { type: "object", properties: { inbox: ADMIN_INBOX }, required: ["inbox"] },
     run: (env, inbox) => restoreInbox(env, inbox),
   },
   {
@@ -258,7 +261,7 @@ const adminTools: Tool[] = [
       "that needs `confirm: true`. Cannot be undone.",
     admin: true,
     policy: "any",
-    inputSchema: { type: "object", properties: { inbox: INBOX, confirm: { type: "boolean", description: "Must be true to remove a deleted inbox entirely" } }, required: ["inbox"] },
+    inputSchema: { type: "object", properties: { inbox: ADMIN_INBOX, confirm: { type: "boolean", description: "Must be true to remove a deleted inbox entirely" } }, required: ["inbox"] },
     run: (env, inbox, args) => purgeInbox(env, inbox, bool(args.confirm)),
   },
   {
@@ -266,7 +269,7 @@ const adminTools: Tool[] = [
     description: "Issue a new api_key for an inbox. The old key stops working at once — a running agent holding it is cut off — and every attachment link the inbox minted is revoked.",
     admin: true,
     policy: "live",
-    inputSchema: { type: "object", properties: { inbox: INBOX }, required: ["inbox"] },
+    inputSchema: { type: "object", properties: { inbox: ADMIN_INBOX }, required: ["inbox"] },
     run: (env, inbox) => rotateInboxKey(env, inbox),
   },
   {
