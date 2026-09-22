@@ -226,4 +226,16 @@ describe("messages", () => {
     const after = await env.DB.prepare("SELECT updated_at FROM messages").first<any>();
     expect(after.updated_at).toBeGreaterThan(1);
   });
+
+  it("bumps updated_at when a message is marked unread", async () => {
+    const inbox = await createInbox("agent");
+    await receive(eml(), inbox.address);
+    const before = await env.DB.prepare("SELECT id FROM messages").first<any>();
+    await api(`/messages/${before.id}`, { key: inbox.api_key }); // mark it read first
+    await env.DB.prepare("UPDATE messages SET updated_at = 1 WHERE id = ?").bind(before.id).run();
+
+    await api(`/messages/${before.id}/unread`, { method: "POST", key: inbox.api_key });
+    const after = await env.DB.prepare("SELECT updated_at FROM messages").first<any>();
+    expect(after.updated_at).toBeGreaterThan(1);
+  });
 });

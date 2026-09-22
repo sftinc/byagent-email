@@ -172,9 +172,9 @@ app.get("/messages/:id/attachments/:index", async (c) => {
 
 app.post("/messages/:id/unread", async (c) => {
   const { meta } = await c.env.DB.prepare(
-    "UPDATE messages SET read_at = NULL WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL",
+    "UPDATE messages SET read_at = NULL, updated_at = ? WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL",
   )
-    .bind(c.req.param("id"), c.get("inbox").id)
+    .bind(Date.now(), c.req.param("id"), c.get("inbox").id)
     .run();
   if (meta.changes === 0) return c.json({ error: "Message not found" }, 404);
   return c.json({ ok: true });
