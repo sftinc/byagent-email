@@ -23,9 +23,11 @@ The setup command:
   the Worker is served on. `wrangler dev` uses this file too. Load it with `source .dev.vars`.
 
 Setup is safe to re-run. It keeps existing resources, data and the `ADMIN_KEY` in `.dev.vars`. To
-rotate the admin key, delete that line and re-run. After pulling updates, re-run it to redeploy; a
-migration that only edits an existing file in place (like `0001_init.sql` here) is a no-op for
-`wrangler d1 migrations apply`, so the live schema was reconciled by hand instead. An install that
+rotate the admin key, delete that line and re-run. After pulling updates, re-run it to redeploy. Be
+aware that schema changes here are made by editing `0001_init.sql` in place rather than by adding a
+numbered migration, and `wrangler d1 migrations apply` skips a migration it has already recorded — so
+re-running setup will not bring an existing database up to date. Compare the file against your live
+schema and apply the difference yourself with `wrangler d1 execute <name> --remote`. An install that
 predates delivery events won't get the
 `agent-inbox-email-events` consumer added to its `wrangler.jsonc` by re-running setup — setup never
 rewrites that file — so add the `queues.consumers` entry from `wrangler.example.jsonc` to it by hand.

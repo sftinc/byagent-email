@@ -229,6 +229,28 @@ describe("webhook delivery", () => {
     expect(body.message).toMatchObject({ status: "bounced", status_reason: "5.1.1" });
   });
 
+  it("keeps a null status_reason from the job instead of falling through to the row", async () => {
+    const inbox = await createInbox("agent");
+    const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string };
+    const send = vi.fn().mockResolvedValue({ messageId: "<m@x>" });
+    await api("/send", { method: "POST", key: inbox.api_key, body: { to: "b@example.org", subject: "Hi", text: "Hello" } }, { EMAIL: { send } as any });
+    const row = (await env.DB.prepare("SELECT id FROM messages WHERE direction = 'out'").first<{ id: string }>())!;
+    // The row carries a reason; this job's own status legitimately has none. `?? hook.status_reason`
+    // would pair 'complained' with the row's bounce code, which is why the two travel together.
+    await env.DB.prepare("UPDATE messages SET status = 'bounced', status_reason = '5.1.1' WHERE id = ?").bind(row.id).run();
+
+    const batch = createMessageBatch("agent-inbox-webhooks", [
+      { id: "job-1", timestamp: Date.now(), attempts: 1, body: { webhookId: hook.id, messageId: row.id, status: "complained", statusReason: null } },
+    ]);
+    const fetchMock = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+    await handleQueue(batch, env);
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.message).toMatchObject({ status: "complained", status_reason: null });
+  });
+
   it("retries with backoff on a failed delivery", async () => {
     const { batch } = await setup();
     vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 503 })));

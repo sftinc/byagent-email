@@ -93,8 +93,8 @@ export async function handleDeliveryEvent(batch: MessageBatch<DeliveryEvent>, en
       // This failure gets no row in D1, so it's logged here rather than duplicated with a row.
       console.log({
         event: "delivery_event_failed",
-        eventId: msg.body.payload?.eventId,
-        messageId: msg.body.payload?.messageId,
+        eventId: msg.body?.payload?.eventId,
+        messageId: msg.body?.payload?.messageId,
         error: String(err).slice(0, 200),
       });
       msg.retry({ delaySeconds: 60 });

@@ -36,7 +36,7 @@ CREATE TABLE messages (
   -- routing
   direction     TEXT NOT NULL,     -- 'in' (received) or 'out' (sent)
   status        TEXT NOT NULL,     -- in: 'received' | 'rejected'
-                                    -- out: 'sent' | 'delivered' | 'deferred' | 'bounced' | 'complained' | 'rejected' | 'failed'
+                                   -- out: 'sent' | 'delivered' | 'deferred' | 'bounced' | 'complained' | 'rejected' | 'failed'
   status_reason TEXT,              -- why the status is what it is; null when there's nothing to explain
   message_id    TEXT,              -- the RFC 5322 Message-ID; how a delivery event finds its message
   from_addr     TEXT NOT NULL,

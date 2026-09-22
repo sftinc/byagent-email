@@ -142,7 +142,8 @@ describe("delivery events", () => {
     const retry = vi.fn();
     (batch.messages[0] as any).retry = retry;
     await handleDeliveryEvent(batch as any, env);
-    expect(retry).toHaveBeenCalled();
+    // The delay is what makes the grace window reachable at all; a bare retry() burns max_retries in seconds.
+    expect(retry).toHaveBeenCalledWith({ delaySeconds: 60 });
   });
 
   it("acks an unmatched event older than five minutes", async () => {
@@ -187,7 +188,13 @@ describe("delivery events", () => {
       `INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, message_id, created_at, updated_at)
        VALUES ('m1','i1','in','received','a@x.com','','b@x.com','s','[]','<m@x>',1,1)`,
     ).run();
-    await run(bounceEvent("<m@x>"));
+    const batch = createMessageBatch("agent-inbox-email-events", [
+      { id: "ev-1", timestamp: new Date(), attempts: 1, body: bounceEvent("<m@x>") },
+    ]);
+    const retry = vi.fn();
+    (batch.messages[0] as any).retry = retry;
+    await handleDeliveryEvent(batch as any, env);
+    expect(retry).toHaveBeenCalledWith({ delaySeconds: 60 });
     expect((await status()).status).toBe("received");
   });
 
