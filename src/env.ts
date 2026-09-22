@@ -5,6 +5,7 @@ export interface Env {
   WEBHOOKS: Queue<WebhookJob>;
   RETENTION_DAYS: string;
   ADMIN_KEY: string;
+  API_URL: string; // where the Worker is served; attachment links are minted under it
 }
 
 export interface Inbox {
@@ -51,6 +52,10 @@ export interface DeliveryEvent {
 
 // The Workers runtime has these, but TypeScript's lib doesn't declare them yet.
 declare global {
-  interface Uint8Array { toBase64(): string }
-  interface Uint8ArrayConstructor { fromBase64(base64: string): Uint8Array }
+  interface Uint8Array {
+    toBase64(options?: { alphabet?: "base64" | "base64url"; omitPadding?: boolean }): string;
+  }
+  interface Uint8ArrayConstructor {
+    fromBase64(base64: string, options?: { alphabet?: "base64" | "base64url" }): Uint8Array<ArrayBuffer>;
+  }
 }

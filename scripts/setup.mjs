@@ -61,6 +61,8 @@ const vars = new Map(lines.map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.ind
 const existing = vars.get("ADMIN_KEY");
 const adminKey = existing || randomBytes(32).toString("hex");
 run("npx wrangler secret put ADMIN_KEY", { input: adminKey });
+// The Worker mints attachment links under its own URL, which it can only know from here.
+if (apiUrl) run("npx wrangler secret put API_URL", { input: apiUrl });
 vars.set("ADMIN_KEY", adminKey);
 if (apiUrl) vars.set("API_URL", apiUrl);
 writeFileSync(".dev.vars", `${[...vars].map(([k, v]) => `${k}=${v}`).join("\n")}\n`);
