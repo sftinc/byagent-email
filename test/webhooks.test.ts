@@ -164,12 +164,13 @@ describe("webhook delivery", () => {
     });
   });
 
-  it("carries a bounced status in the payload", async () => {
+  it("carries the row's status in the payload", async () => {
     const inbox = await createInbox("agent");
     const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string; secret: string };
-    await receive(eml({ subject: "Bounced" }), inbox.address, { WEBHOOKS: { sendBatch: vi.fn() } as any });
+    await receive(eml({ subject: "Hi" }), inbox.address, { WEBHOOKS: { sendBatch: vi.fn() } as any });
     const row = await env.DB.prepare("SELECT id FROM messages").first<{ id: string }>();
-    await env.DB.prepare("UPDATE messages SET status = 'bounced', status_reason = 'null-return-path' WHERE id = ?")
+    // No job.status (a plain "mail" webhook): the payload should reflect whatever the row holds.
+    await env.DB.prepare("UPDATE messages SET status = 'received', status_reason = 'test-reason' WHERE id = ?")
       .bind(row!.id)
       .run();
     const batch = createMessageBatch("agent-inbox-webhooks", [
@@ -182,7 +183,7 @@ describe("webhook delivery", () => {
 
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     const body = JSON.parse(init.body as string);
-    expect(body.message).toMatchObject({ status: "bounced", status_reason: "null-return-path" });
+    expect(body.message).toMatchObject({ status: "received", status_reason: "test-reason" });
   });
 
   it("delivers a status webhook describing the event that queued it", async () => {
@@ -194,7 +195,7 @@ describe("webhook delivery", () => {
     await env.DB.prepare("UPDATE messages SET status = 'bounced', status_reason = '5.1.1' WHERE id = ?").bind(row.id).run();
 
     const batch = createMessageBatch("agent-inbox-webhooks", [
-      { id: "job-1", timestamp: Date.now(), attempts: 1, body: { webhookId: hook.id, messageId: row.id, status: "bounced" } },
+      { id: "job-1", timestamp: Date.now(), attempts: 1, body: { webhookId: hook.id, messageId: row.id, status: "bounced", statusReason: "5.1.1" } },
     ]);
     const fetchMock = vi.fn(async () => new Response("ok"));
     vi.stubGlobal("fetch", fetchMock);
@@ -204,6 +205,28 @@ describe("webhook delivery", () => {
     const body = JSON.parse(init.body as string);
     expect(body.event).toBe("status");
     expect(body.message).toMatchObject({ id: row.id, direction: "out", status: "bounced", status_reason: "5.1.1" });
+  });
+
+  it("takes status and status_reason from the job together, not a later row", async () => {
+    const inbox = await createInbox("agent");
+    const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string };
+    const send = vi.fn().mockResolvedValue({ messageId: "<m@x>" });
+    await api("/send", { method: "POST", key: inbox.api_key, body: { to: "b@example.org", subject: "Hi", text: "Hello" } }, { EMAIL: { send } as any });
+    const row = (await env.DB.prepare("SELECT id FROM messages WHERE direction = 'out'").first<{ id: string }>())!;
+    // A second terminal event landed between enqueue and delivery, so the row has moved on from
+    // what this job was queued for.
+    await env.DB.prepare("UPDATE messages SET status = 'complained', status_reason = NULL WHERE id = ?").bind(row.id).run();
+
+    const batch = createMessageBatch("agent-inbox-webhooks", [
+      { id: "job-1", timestamp: Date.now(), attempts: 1, body: { webhookId: hook.id, messageId: row.id, status: "bounced", statusReason: "5.1.1" } },
+    ]);
+    const fetchMock = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+    await handleQueue(batch, env);
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.message).toMatchObject({ status: "bounced", status_reason: "5.1.1" });
   });
 
   it("retries with backoff on a failed delivery", async () => {

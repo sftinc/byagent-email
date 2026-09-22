@@ -181,7 +181,7 @@ describe("delivery events", () => {
     expect((await status()).status).toBe("complained");
   });
 
-  it("ignores an event for an inbound message", async () => {
+  it("retries an event for an inbound message, since it matches no outbound row", async () => {
     await env.DB.prepare("INSERT INTO inboxes (id, address, key_hash, created_at, updated_at) VALUES ('i1','a@x.com','h',0,0)").run();
     await env.DB.prepare(
       `INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, message_id, created_at, updated_at)
@@ -199,7 +199,9 @@ describe("delivery events", () => {
       createMessageBatch("agent-inbox-email-events", [{ id: "ev-1", timestamp: new Date(), attempts: 1, body: bounceEvent("<m@x>") }]) as any,
       { ...env, WEBHOOKS: { sendBatch } as any },
     );
-    expect(sendBatch).toHaveBeenCalledWith([{ body: { webhookId: "w1", messageId: "m1", status: "bounced" } }]);
+    expect(sendBatch).toHaveBeenCalledWith([
+      { body: { webhookId: "w1", messageId: "m1", status: "bounced", statusReason: "5.1.1" } },
+    ]);
   });
 
   it("queues no webhook for delivered or deferred", async () => {

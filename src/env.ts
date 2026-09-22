@@ -16,11 +16,18 @@ export interface Inbox {
 export interface WebhookJob {
   webhookId: string;
   messageId: string;
-  // The status this job fired for. Absent for inbound mail, which has only one state.
+  // The status this job fired for, and why. Absent for inbound mail, which has only one state.
+  // Always set together, from the same event that queued the job — never mix one with the row's.
   status?: string;
+  statusReason?: string | null;
 }
 
-// What Cloudflare Email Service publishes to the delivery-events queue. Only the fields we read.
+// What Cloudflare Email Service publishes to the delivery-events queue, mirroring the payloads
+// captured verbatim from production. Some fields go unread today: they're kept because the test
+// fixtures depend on them, and because four of the six event types are inference we may need to
+// correct later. `payload.terminal` is deliberately one of the unread ones — the code keys off its
+// own TERMINAL set (below) because what matters is whether the row's *existing* status is terminal,
+// not whether this event is.
 export interface DeliveryEvent {
   type: string;
   source: { domain: string };
@@ -30,7 +37,7 @@ export interface DeliveryEvent {
     messageId: string;
     recipient: string;
     terminal: boolean;
-    delivery: { status: string; smtpEnhancedStatusCode?: string };
+    delivery?: { status: string; smtpEnhancedStatusCode?: string };
     bounce?: { type: string; classification?: string; reason?: string };
   };
 }

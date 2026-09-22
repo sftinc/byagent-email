@@ -86,7 +86,7 @@ admin.get("/domains", async (c) => {
             COUNT(CASE WHEN m.status != 'sent' THEN 1 END) AS advanced,
             MIN(m.created_at) AS oldest
      FROM inboxes i
-     LEFT JOIN messages m ON m.inbox_id = i.id AND m.direction = 'out' AND m.deleted_at IS NULL
+     LEFT JOIN messages m ON m.inbox_id = i.id AND m.direction = 'out' AND m.deleted_at IS NULL AND m.message_id IS NOT NULL
      WHERE i.deleted_at IS NULL
      GROUP BY domain ORDER BY domain`,
   ).all<{ domain: string; inboxes: number; sent: number; advanced: number; oldest: number | null }>();

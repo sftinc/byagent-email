@@ -31,11 +31,18 @@ export async function deliverWebhook(job: WebhookJob, env: Env, attempt: number)
   }
 
   const { html, cc, bcc, headers, attachments, ...rest } = stored;
+  // status and status_reason must come from the same source: a second terminal event can land
+  // between enqueue and delivery, so re-reading one from the row and the other from the job could
+  // pair a bounce's status with a later (or earlier) reason. job.status decides which pair applies;
+  // `job.statusReason ?? null` keeps a legitimate null (e.g. `complained`) from falling through to
+  // the row's.
+  const status = job.status ?? hook.status;
+  const status_reason = job.status ? (job.statusReason ?? null) : hook.status_reason;
   const message = {
     id: job.messageId,
     direction: hook.direction,
-    status: job.status ?? hook.status,
-    status_reason: hook.status_reason,
+    status,
+    status_reason,
     ...rest,
     attachments: attachments.map((a, index) => ({ index, ...a })),
   };

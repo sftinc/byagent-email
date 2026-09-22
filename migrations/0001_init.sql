@@ -35,7 +35,8 @@ CREATE TABLE messages (
   inbox_id      TEXT REFERENCES inboxes(id) ON DELETE CASCADE,  -- null when no inbox holds the address
   -- routing
   direction     TEXT NOT NULL,     -- 'in' (received) or 'out' (sent)
-  status        TEXT NOT NULL,     -- 'received' | 'bounced' | 'rejected' (in); 'sent' | 'failed' (out)
+  status        TEXT NOT NULL,     -- in: 'received' | 'rejected'
+                                    -- out: 'sent' | 'delivered' | 'deferred' | 'bounced' | 'complained' | 'rejected' | 'failed'
   status_reason TEXT,              -- why the status is what it is; null when there's nothing to explain
   message_id    TEXT,              -- the RFC 5322 Message-ID; how a delivery event finds its message
   from_addr     TEXT NOT NULL,

@@ -195,8 +195,8 @@ describe("admin", () => {
   it("reports domains and hints when nothing has advanced", async () => {
     const inbox = await createInbox("agent");
     await env.DB.prepare(
-      `INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, created_at, updated_at)
-       SELECT 'm1', id, 'out', 'sent', address, '', 'b@x.com', 's', '[]', ?, ? FROM inboxes`,
+      `INSERT INTO messages (id, inbox_id, direction, status, message_id, from_addr, from_name, recipients, subject, attachments, created_at, updated_at)
+       SELECT 'm1', id, 'out', 'sent', '<m@x>', address, '', 'b@x.com', 's', '[]', ?, ? FROM inboxes`,
     ).bind(Date.now() - 2 * 3600_000, Date.now() - 2 * 3600_000).run();
 
     const { domains } = (await (await api("/admin/domains", { key: ADMIN_KEY })).json()) as any;
@@ -205,11 +205,34 @@ describe("admin", () => {
     expect(domains[0].hint).toContain("Subscriptions");
   });
 
+  it("still gives the hint when a send-time failure has no message_id to ever get an event", async () => {
+    const inbox = await createInbox("agent");
+    const old = Date.now() - 2 * 3600_000;
+    // The way src/mail.ts inserts a row when EMAIL.send throws: no message_id, so no delivery event
+    // can ever arrive for it.
+    await env.DB.prepare(
+      `INSERT INTO messages (id, inbox_id, direction, status, message_id, from_addr, from_name, recipients, subject, attachments, created_at, updated_at)
+       VALUES ('m1', ?, 'out', 'failed', NULL, ?, '', 'b@x.com', 's', '[]', ?, ?)`,
+    )
+      .bind(inbox.id, inbox.address, old, old)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO messages (id, inbox_id, direction, status, message_id, from_addr, from_name, recipients, subject, attachments, created_at, updated_at)
+       VALUES ('m2', ?, 'out', 'sent', '<m@x>', ?, '', 'b@x.com', 's', '[]', ?, ?)`,
+    )
+      .bind(inbox.id, inbox.address, old, old)
+      .run();
+
+    const { domains } = (await (await api("/admin/domains", { key: ADMIN_KEY })).json()) as any;
+    expect(domains[0]).toMatchObject({ sent: 1, advanced: 0 });
+    expect(domains[0].hint).toContain("Subscriptions");
+  });
+
   it("gives no hint once a message has advanced", async () => {
     await createInbox("agent");
     await env.DB.prepare(
-      `INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, created_at, updated_at)
-       SELECT 'm1', id, 'out', 'delivered', address, '', 'b@x.com', 's', '[]', ?, ? FROM inboxes`,
+      `INSERT INTO messages (id, inbox_id, direction, status, message_id, from_addr, from_name, recipients, subject, attachments, created_at, updated_at)
+       SELECT 'm1', id, 'out', 'delivered', '<m@x>', address, '', 'b@x.com', 's', '[]', ?, ? FROM inboxes`,
     ).bind(Date.now() - 2 * 3600_000, Date.now()).run();
 
     const { domains } = (await (await api("/admin/domains", { key: ADMIN_KEY })).json()) as any;

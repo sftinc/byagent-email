@@ -34,7 +34,7 @@ npx wrangler login
 npm run setup api.example.com     # hostname optional; without it you get a workers.dev URL
 ```
 
-Setup creates the D1 database, R2 bucket and queue, deploys the Worker, and writes `ADMIN_KEY`
+Setup creates the D1 database, R2 bucket and queues, deploys the Worker, and writes `ADMIN_KEY`
 and `API_URL` to `.dev.vars` (gitignored). It's safe to re-run.
 
 Then point each email domain at the Worker, in the Cloudflare dashboard:

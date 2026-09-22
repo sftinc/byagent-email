@@ -22,9 +22,9 @@ const TERMINAL = new Set(["delivered", "bounced", "complained", "rejected", "fai
 // characters of the remote server's folded prose. A soft bounce is retry exhaustion rather than a
 // dead address, and the prefix keeps that distinction without a second column.
 function reasonFor(event: DeliveryEvent, status: string): string | null {
-  const code = event.payload.delivery.smtpEnhancedStatusCode ?? null;
+  const code = event.payload.delivery?.smtpEnhancedStatusCode ?? null;
   if (status === "bounced") return event.payload.bounce?.type === "soft" ? `soft:${code}` : code;
-  if (status === "rejected") return event.payload.delivery.status;
+  if (status === "rejected") return event.payload.delivery?.status ?? null;
   if (status === "deferred" || status === "failed") return code;
   return null;
 }
@@ -32,50 +32,72 @@ function reasonFor(event: DeliveryEvent, status: string): string | null {
 // Cloudflare publishes one event per recipient as a message's delivery progresses. Each one is
 // matched to its message by Message-ID and overwrites the row's status; see the spec for why a
 // message with several recipients keeps only the last outcome processed.
+//
+// Only `bounced` and `delivered` payload shapes were captured from production; the other four are
+// inference, so a look-up or a write can throw on a shape we didn't expect. A failure to look up or
+// write lets the message retry, and it must not take down the rest of the batch: each message gets
+// its own try/catch, and the try block is the only place that acks or retries so the catch can never
+// double up on an action already taken.
 export async function handleDeliveryEvent(batch: MessageBatch<DeliveryEvent>, env: Env): Promise<void> {
   for (const msg of batch.messages) {
-    const status = STATUS[msg.body.type];
-    if (status) {
-      // No `deleted_at IS NULL` here, deliberately: an event is a fact about what happened to the
-      // message whether or not someone has since hidden it, and recording it keeps a restored
-      // message truthful. Nothing reaches the user about a deleted message — `deliverWebhook`
-      // already filters on `deleted_at IS NULL` (src/webhooks.ts:13).
-      const row = await env.DB.prepare("SELECT id, inbox_id, status FROM messages WHERE message_id = ? AND direction = 'out'")
-        .bind(msg.body.payload.messageId)
-        .first<{ id: string; inbox_id: string; status: string }>();
+    try {
+      const status = STATUS[msg.body.type];
+      if (status) {
+        // No `deleted_at IS NULL` here, deliberately: an event is a fact about what happened to the
+        // message whether or not someone has since hidden it, and recording it keeps a restored
+        // message truthful. Nothing reaches the user about a deleted message — `deliverWebhook`
+        // already filters on `deleted_at IS NULL` (src/webhooks.ts:13).
+        const row = await env.DB.prepare("SELECT id, inbox_id, status FROM messages WHERE message_id = ? AND direction = 'out'")
+          .bind(msg.body.payload.messageId)
+          .first<{ id: string; inbox_id: string; status: string }>();
 
-      if (!row) {
-        if (Date.now() - msg.timestamp.getTime() < GRACE_MS) {
-          msg.retry();
+        if (!row) {
+          if (Date.now() - msg.timestamp.getTime() < GRACE_MS) {
+            // 4 retries (wrangler.example.jsonc's max_retries) at 60s apart is 4 minutes, just inside
+            // GRACE_MS. Don't change one without the other.
+            msg.retry({ delaySeconds: 60 });
+          } else {
+            msg.ack();
+          }
           continue;
         }
-        msg.ack();
-        continue;
-      }
 
-      if (!(TERMINAL.has(row.status) && !TERMINAL.has(status))) {
-        await env.DB.prepare(
-          "UPDATE messages SET status = ?, status_reason = ?, updated_at = ? WHERE message_id = ? AND direction = 'out'",
-        )
-          .bind(status, reasonFor(msg.body, status), Date.now(), msg.body.payload.messageId)
-          .run();
+        if (!(TERMINAL.has(row.status) && !TERMINAL.has(status))) {
+          const reason = reasonFor(msg.body, status);
+          await env.DB.prepare(
+            "UPDATE messages SET status = ?, status_reason = ?, updated_at = ? WHERE message_id = ? AND direction = 'out'",
+          )
+            .bind(status, reason, Date.now(), msg.body.payload.messageId)
+            .run();
 
-        // Delivered needs no interruption; everything else terminal is worth waking the agent for,
-        // because by the time this fires nobody is still holding the `POST /send` response.
-        if (TERMINAL.has(status) && status !== "delivered") {
-          const { results } = await env.DB.prepare("SELECT id FROM webhooks WHERE inbox_id = ? AND deleted_at IS NULL")
-            .bind(row.inbox_id)
-            .all<{ id: string }>();
-          if (results.length > 0) {
-            try {
-              await env.WEBHOOKS.sendBatch(results.map((w) => ({ body: { webhookId: w.id, messageId: row.id, status } })));
-            } catch (err) {
-              console.error(err);
+          // Delivered needs no interruption; everything else terminal is worth waking the agent for,
+          // because by the time this fires nobody is still holding the `POST /send` response.
+          if (TERMINAL.has(status) && status !== "delivered") {
+            const { results } = await env.DB.prepare("SELECT id FROM webhooks WHERE inbox_id = ? AND deleted_at IS NULL")
+              .bind(row.inbox_id)
+              .all<{ id: string }>();
+            if (results.length > 0) {
+              try {
+                await env.WEBHOOKS.sendBatch(
+                  results.map((w) => ({ body: { webhookId: w.id, messageId: row.id, status, statusReason: reason } })),
+                );
+              } catch (err) {
+                console.error(err);
+              }
             }
           }
         }
       }
+      msg.ack();
+    } catch (err) {
+      // This failure gets no row in D1, so it's logged here rather than duplicated with a row.
+      console.log({
+        event: "delivery_event_failed",
+        eventId: msg.body.payload?.eventId,
+        messageId: msg.body.payload?.messageId,
+        error: String(err).slice(0, 200),
+      });
+      msg.retry({ delaySeconds: 60 });
     }
-    msg.ack();
   }
 }
