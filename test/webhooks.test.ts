@@ -183,6 +183,55 @@ describe("webhook delivery", () => {
     expect(await (await api(new URL(message.attachments[0].url).pathname)).text()).toBe("A\n");
   });
 
+  it("continues delivering after one job throws, retrying it and acking the rest", async () => {
+    // Create two inboxes with messages and webhooks
+    const inbox1 = await createInbox("agent1");
+    const hook1 = (await (await api("/webhooks", { method: "POST", key: inbox1.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string };
+    await receive(eml({ subject: "Message 1" }), inbox1.address, { WEBHOOKS: { sendBatch: vi.fn() } as any });
+    const row1 = await env.DB.prepare("SELECT id FROM messages WHERE inbox_id = (SELECT id FROM inboxes WHERE address = ?)").bind(inbox1.address).first<{ id: string }>();
+
+    const inbox2 = await createInbox("agent2");
+    const hook2 = (await (await api("/webhooks", { method: "POST", key: inbox2.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string };
+    await receive(eml({ subject: "Message 2" }), inbox2.address, { WEBHOOKS: { sendBatch: vi.fn() } as any });
+    const row2 = await env.DB.prepare("SELECT id FROM messages WHERE inbox_id = (SELECT id FROM inboxes WHERE address = ?)").bind(inbox2.address).first<{ id: string }>();
+
+    const batch = createMessageBatch("agent-inbox-webhooks", [
+      { id: "job-1", timestamp: Date.now(), attempts: 1, body: { webhookId: hook1.id, messageId: row1!.id } },
+      { id: "job-2", timestamp: Date.now(), attempts: 1, body: { webhookId: hook2.id, messageId: row2!.id } },
+    ]);
+
+    // Make the first job fail during message loading
+    vi.spyOn(env.MAIL, "get").mockRejectedValueOnce(new Error("boom"));
+    const fetchMock = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const ctx = createExecutionContext();
+    await handleQueue(batch, env);
+    const result = await getQueueResult(batch, ctx);
+
+    // First job should be retried, second job should be acked
+    expect(result.explicitAcks).toEqual(["job-2"]);
+    expect(result.retryMessages).toMatchObject([{ msgId: "job-1" }]);
+
+    // Second job's delivery should have succeeded
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url] = fetchMock.mock.calls[0] as unknown as [string];
+    expect(url).toBe("https://agent.example/hook");
+
+    // First job's error should be logged
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "webhook_delivery",
+        webhookId: hook1.id,
+        messageId: row1!.id,
+        attempt: 1,
+        status: null,
+        error: expect.stringContaining("boom"),
+      }),
+    );
+  });
+
   it("carries the row's status in the payload", async () => {
     const inbox = await createInbox("agent");
     const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string; secret: string };

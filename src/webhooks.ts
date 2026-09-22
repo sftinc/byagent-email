@@ -173,7 +173,23 @@ export async function deliverWebhook(job: WebhookJob, env: Env, attempt: number)
 
 export async function handleQueue(batch: MessageBatch<WebhookJob>, env: Env): Promise<void> {
   for (const msg of batch.messages) {
-    if (await deliverWebhook(msg.body, env, msg.attempts)) msg.ack();
-    else msg.retry({ delaySeconds: 30 * 2 ** (msg.attempts - 1) });
+    try {
+      if (await deliverWebhook(msg.body, env, msg.attempts)) msg.ack();
+      else msg.retry({ delaySeconds: 30 * 2 ** (msg.attempts - 1) });
+    } catch (err) {
+      // A failure before the fetch (e.g. minting a URL or loading a message) must not stall
+      // the rest of the batch. Log it the same way a failed delivery does, and retry with the
+      // same backoff, so this try/catch and the one in deliverWebhook are indistinguishable to
+      // the agent. Only the try block acks/retries, so the catch can never double up.
+      console.log({
+        event: "webhook_delivery",
+        webhookId: msg.body.webhookId,
+        messageId: msg.body.messageId,
+        attempt: msg.attempts,
+        status: null,
+        error: String(err).slice(0, 200),
+      });
+      msg.retry({ delaySeconds: 30 * 2 ** (msg.attempts - 1) });
+    }
   }
 }
