@@ -118,14 +118,16 @@ describe("sent mail", () => {
     expect((await env.MAIL.list()).objects).toHaveLength(2); // message.json and its attachment
   });
 
-  it("stores nothing when the send fails", async () => {
+  it("stores a failed message, listed with direction=all, when the send fails", async () => {
     const inbox = await createInbox("agent");
     const send = vi.fn(async () => {
       throw new Error("down");
     });
     const body = { to: "a@x.com", subject: "Hi", text: "x" };
     expect((await api("/send", { method: "POST", key: inbox.api_key, body }, { EMAIL: { send } as any })).status).toBe(502);
-    expect(await list(inbox.api_key, "?direction=all")).toEqual([]);
+    const all = await list(inbox.api_key, "?direction=all");
+    expect(all).toHaveLength(1);
+    expect(all[0]).toMatchObject({ direction: "out", status: "failed", status_reason: "down" });
   });
 
   it("stores sent mail with a sent status", async () => {

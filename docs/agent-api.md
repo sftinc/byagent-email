@@ -48,7 +48,9 @@ has a name. `id` is the saved copy,
 which works with every `/messages/:id` route; `messageId` is the email's `Message-ID` header.
 
 Limits: 5 MiB per message, 32 attachments, 50 recipients. Over the size limit returns 413; a rejected
-send returns 502 with Cloudflare's error code, such as `E_DAILY_LIMIT_EXCEEDED`.
+send returns 502 with Cloudflare's error code, such as `E_DAILY_LIMIT_EXCEEDED`. The attempt is still
+saved with `status: "failed"` and that code as `status_reason`, and the 502 body carries its `id`
+alongside `error` so you can find it later.
 
 ### Attachments
 
@@ -179,4 +181,4 @@ Every error is `{"error":"…"}` with a status:
 | 401 | missing or wrong API key |
 | 404 | no such message, webhook, or nothing to restore |
 | 413 | the message is larger than 5 MiB |
-| 502 | Cloudflare refused the send; `error` is its code |
+| 502 | Cloudflare refused the send; `error` is its code, and the body also carries the failed message's `id` |

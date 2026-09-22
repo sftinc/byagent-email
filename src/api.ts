@@ -271,7 +271,9 @@ app.post("/send", async (c) => {
   try {
     ({ messageId } = await c.env.EMAIL.send(built.message));
   } catch (err: any) {
-    return c.json({ error: err?.code ?? err?.message ?? "Send failed" }, 502);
+    const code = err?.code ?? err?.message ?? "Send failed";
+    const id = await saveSent(c.env, inbox, built.message, null, code);
+    return c.json({ id, error: code }, 502);
   }
   const id = await saveSent(c.env, inbox, built.message, messageId);
   return c.json({ id, messageId });

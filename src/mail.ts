@@ -116,7 +116,14 @@ export function loadAttachment(env: Env, inboxId: string, id: string, index: num
 }
 
 // Sent mail is stored the same way, built from what was sent rather than from a parsed email.
-export async function saveSent(env: Env, inbox: Inbox, message: EmailMessageBuilder, messageId: string): Promise<string> {
+// A null `messageId` means the send binding threw, so the row records the attempt as failed.
+export async function saveSent(
+  env: Env,
+  inbox: Inbox,
+  message: EmailMessageBuilder,
+  messageId: string | null,
+  statusReason: string | null = null,
+): Promise<string> {
   const id = uuidv7();
   const [to, cc, bcc] = [message.to, message.cc, message.bcc].map(
     (list) => (list ?? []) as (string | EmailAddress)[],
@@ -149,12 +156,14 @@ export async function saveSent(env: Env, inbox: Inbox, message: EmailMessageBuil
 
   await saveMessage(env, inbox.id, id, stored, files);
   await env.DB.prepare(
-    `INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, created_at, read_at)
-     VALUES (?, ?, 'out', 'sent', ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at, read_at)
+     VALUES (?, ?, 'out', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
       inbox.id,
+      messageId === null ? "failed" : "sent",
+      statusReason,
       inbox.address,
       inbox.name ?? "",
       [...to, ...cc, ...bcc].map(addressOf).join(",").toLowerCase(),

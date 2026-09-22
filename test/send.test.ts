@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildEmail } from "../src/send";
 import { api, createInbox, eml, receive, reset } from "./helpers";
@@ -149,6 +150,25 @@ describe("POST /send", () => {
     });
     const res = await api("/send", { method: "POST", key, body: { to: "a@x.com", subject: "Hi", text: "x" } }, { EMAIL: { send } as any });
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ error: "E_DAILY_LIMIT_EXCEEDED" });
+    expect(await res.json()).toEqual({ id: expect.any(String), error: "E_DAILY_LIMIT_EXCEEDED" });
+  });
+
+  it("stores a failed row and returns its id when the send throws", async () => {
+    const inbox = await createInbox("agent");
+    const send = vi.fn().mockRejectedValue(Object.assign(new Error("quota"), { code: "E_DAILY_LIMIT_EXCEEDED" }));
+    const res = await api(
+      "/send",
+      { method: "POST", key: inbox.api_key, body: { to: "bob@example.org", subject: "Hi", text: "Hello" } },
+      { EMAIL: { send } as any },
+    );
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { id: string; error: string };
+    expect(body.error).toBe("E_DAILY_LIMIT_EXCEEDED");
+
+    const row = await env.DB.prepare("SELECT id, direction, status, status_reason FROM messages").first();
+    expect(row).toEqual({ id: body.id, direction: "out", status: "failed", status_reason: "E_DAILY_LIMIT_EXCEEDED" });
+
+    const stored = await (await env.MAIL.get(`${inbox.id}/${body.id}/message.json`))!.json<any>();
+    expect(stored.message_id).toBeNull();
   });
 });
