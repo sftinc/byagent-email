@@ -76,10 +76,15 @@ subdomain>.workers.dev`, and setup turns that on explicitly (`"workers_dev": tru
 it, so setup then writes it into `wrangler.jsonc` as `API_DOMAIN` and deploys a second time. With a
 custom hostname it is known up front and one deploy is enough.
 
-To add or change the API hostname later, set `routes` in `wrangler.jsonc` to
-`[{ "pattern": "<api hostname>", "custom_domain": true }]` and re-run `npm run setup
-<api hostname>`, which updates `API_DOMAIN` to match. Or change both in `wrangler.jsonc` yourself
-and run `npm run deploy`.
+To add a custom hostname to an install that started on workers.dev, re-run setup with it:
+`npm run setup <api hostname>`. Setup edits only the lines it owns in `wrangler.jsonc`. It adds the
+`routes` entry, turns `workers_dev` and `preview_urls` off, sets `API_DOMAIN`, and deploys once. The
+hostname must be on a zone in the same Cloudflare account. The workers.dev URL stops answering, so
+point agents, MCP connectors and webhook receivers at the new one.
+
+To move from one custom hostname to another, change the `routes` pattern in `wrangler.jsonc`
+yourself, then re-run `npm run setup <api hostname>`. Setup won't rewrite an existing `routes` entry,
+since it may be written any number of ways; it stops and says so.
 
 `GET /health` needs no key: it returns `{"ok":true}`, or a 503 if the database is unreachable.
 

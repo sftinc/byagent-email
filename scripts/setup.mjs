@@ -31,33 +31,52 @@ tryRun(`npx wrangler queues create ${NAME}-webhooks`);
 tryRun(`npx wrangler queues create ${NAME}-email-events`);
 const { uuid } = JSON.parse(run(`npx wrangler d1 info ${NAME} --json`));
 
+// Setup edits an existing wrangler.jsonc line by line: it adds or removes only the lines it owns,
+// indented like their neighbours, and leaves every other line — comments, formatting — untouched.
+
 // The Worker mints attachment links under its own hostname, the API_DOMAIN var in wrangler.jsonc.
 // Cloudflare serves every Worker hostname over HTTPS, so only the host is stored. Returns false when
-// the config already holds this domain. A config from before API_DOMAIN existed gets the line added.
+// the config already holds this domain. A config from before API_DOMAIN existed gets the line added
+// as the first entry in `vars`.
 function setApiDomain(domain) {
   const config = readFileSync("wrangler.jsonc", "utf8");
   const line = `"API_DOMAIN": "${domain}"`;
   const updated = /"API_DOMAIN":\s*"[^"]*"/.test(config)
     ? config.replace(/"API_DOMAIN":\s*"[^"]*"/, line)
-    : config.replace('"vars": {', `"vars": {\n    ${line},`);
+    : config.replace(/("vars": \{\n)([ \t]*)/, (_, head, indent) => `${head}${indent}${line},\n${indent}`);
   if (updated === config) return false;
   writeFileSync("wrangler.jsonc", updated);
   return true;
 }
 
-if (existsSync("wrangler.jsonc")) {
-  console.log("wrangler.jsonc already exists, leaving it as is apart from API_DOMAIN (edit it to change the API hostname).");
-} else {
-  // Either a custom domain or the generated workers.dev URL, never neither: without an explicit
-  // setting the Worker can deploy with no public URL at all.
-  const serving = apiHost
-    ? `"routes": [{ "pattern": "${apiHost}", "custom_domain": true }],\n  "workers_dev": false,\n  "preview_urls": false,`
-    : '"workers_dev": true,';
-  const config = readFileSync("wrangler.example.jsonc", "utf8")
-    .replace("REPLACE_WITH_D1_DATABASE_ID", uuid)
-    .replace('"vars": {', `${serving}\n  "vars": {`);
-  writeFileSync("wrangler.jsonc", config);
+// Lines inserted just above `"vars"`, at the same indentation.
+function aboveVars(config, lines) {
+  return config.replace(/^([ \t]*)"vars": \{/m, (vars, indent) => `${lines.map((l) => indent + l).join("\n")}\n${vars}`);
+}
+
+// Either a custom domain or the generated workers.dev URL, never neither: without an explicit
+// setting the Worker can deploy with no public URL at all.
+const serving = apiHost
+  ? [`"routes": [{ "pattern": "${apiHost}", "custom_domain": true }],`, '"workers_dev": false,', '"preview_urls": false,']
+  : ['"workers_dev": true,'];
+
+if (!existsSync("wrangler.jsonc")) {
+  const config = readFileSync("wrangler.example.jsonc", "utf8").replace("REPLACE_WITH_D1_DATABASE_ID", uuid);
+  writeFileSync("wrangler.jsonc", aboveVars(config, serving));
   console.log("Wrote wrangler.jsonc");
+} else if (apiHost && !new RegExp(`"pattern":\\s*"${apiHost.replaceAll(".", "\\.")}"`).test(readFileSync("wrangler.jsonc", "utf8"))) {
+  // A workers.dev install adding a custom domain later: its workers_dev and preview_urls lines are
+  // removed and the custom-domain lines added, nothing else. A config already routed to another
+  // hostname is left for the user to change, since its routes may be written any number of ways.
+  const config = readFileSync("wrangler.jsonc", "utf8");
+  if (/"routes"\s*:/.test(config)) {
+    throw new Error(`wrangler.jsonc already routes another hostname: change its "routes" pattern to ${apiHost}, then re-run.`);
+  }
+  const routed = aboveVars(config.replace(/^[ \t]*"(workers_dev|preview_urls)":.*\n/gm, ""), serving);
+  writeFileSync("wrangler.jsonc", routed);
+  console.log(`Routed wrangler.jsonc to ${apiHost}; the workers.dev URL is turned off.`);
+} else {
+  console.log("wrangler.jsonc already exists, leaving it as is apart from API_DOMAIN.");
 }
 // A hostname on the command line is where the API is served, new config or not, so the first
 // deploy already carries it.
@@ -65,11 +84,12 @@ if (apiHost) setApiDomain(apiHost);
 
 runVisible(`npx wrangler d1 migrations apply ${NAME} --remote`);
 
-// The deploy prints where the Worker is served: a workers.dev URL, or the custom domain.
+// The deploy prints where the Worker is served: a custom domain, a workers.dev URL, or both. A custom
+// domain wins, since it is the one someone chose.
 const deployed = run("npx wrangler deploy");
 console.log(deployed);
 const apiDomain =
-  deployed.match(/https:\/\/([^\s/]+\.workers\.dev)/)?.[1] ?? deployed.match(/^\s+(\S+) \(custom domain\)/m)?.[1];
+  deployed.match(/^\s+(\S+) \(custom domain\)/m)?.[1] ?? deployed.match(/https:\/\/([^\s/]+\.workers\.dev)/)?.[1];
 const apiUrl = apiDomain && `https://${apiDomain}`;
 
 // A workers.dev hostname only exists once the first deploy has printed it, so it goes into the
