@@ -68,6 +68,27 @@ Set up Cloudflare Agent Inbox for me: https://github.com/sftinc/cfloudflare-agen
 
 ## Give an agent an inbox
 
+`<api url>` and `<admin key>` are `API_URL` and `ADMIN_KEY` in `.dev.vars`
+(`source .dev.vars && echo $API_URL $ADMIN_KEY`). `<address>` is any address on a domain you
+set up above, and `<name>` is the display name its mail goes out as — `Claude
+<claude@example.com>`.
+
+### Over MCP
+
+For Claude Code:
+
+```bash
+claude mcp add --transport http inbox <api url>/mcp \
+  --header "Authorization: Bearer <admin key>"
+```
+
+The agent can then create its own inbox with the `create_inbox` tool. This connection reaches
+every inbox. For an agent that should see only its own, connect with that inbox's `api_key`
+instead ([MCP](docs/mcp.md#which-key-to-give-an-agent), which also covers Cursor and other
+clients).
+
+### Over the API
+
 Fill in the four blanks and paste this into any agent. It needs nothing else — no repo, no
 files, no secret store.
 
@@ -85,13 +106,6 @@ The API is at <api url>, and the admin key is <admin key>.
 
 3. Send me a test message at <your address>.
 ```
-
-Or skip the docs and connect the agent over MCP: `claude mcp add --transport http inbox <api url>/mcp --header "Authorization: Bearer <api key>"`. See [MCP](docs/mcp.md).
-
-`<api url>` and `<admin key>` are `API_URL` and `ADMIN_KEY` in `.dev.vars`
-(`source .dev.vars && echo $API_URL $ADMIN_KEY`). `<address>` is any address on a domain you
-set up above, and `<name>` is the display name its mail goes out as — `Claude
-<claude@example.com>`.
 
 ## The API in brief
 
