@@ -1,6 +1,7 @@
-import { createMessageBatch } from "cloudflare:test";
+import { createExecutionContext, createMessageBatch, getQueueResult } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { DeliveryEvent } from "../src/env";
 import { handleDeliveryEvent } from "../src/events";
 import { reset } from "./helpers";
 
@@ -30,6 +31,8 @@ describe("delivery events", () => {
     const batch = createMessageBatch("agent-inbox-email-events", [
       { id: "ev-1", timestamp: new Date(Date.now() - 10 * 60_000), attempts: 1, body: bounceEvent("<nothing@x>") },
     ]);
-    await expect(handleDeliveryEvent(batch as any, env)).resolves.toBeUndefined();
+    const ctx = createExecutionContext();
+    await handleDeliveryEvent(batch as MessageBatch<DeliveryEvent>, env);
+    expect((await getQueueResult(batch, ctx)).explicitAcks).toEqual(["ev-1"]);
   });
 });
