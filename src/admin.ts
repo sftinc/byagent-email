@@ -64,6 +64,16 @@ admin.get("/inboxes", async (c) => {
   return c.json({ inboxes: results });
 });
 
+// Mail for addresses no inbox holds. Unpaged like the other admin lists, but capped: the row
+// count here is set by whoever is mailing the domain, not by us.
+admin.get("/rejected", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, from_addr, recipients, subject, status_reason, created_at FROM messages
+     WHERE inbox_id IS NULL ORDER BY id DESC LIMIT 100`,
+  ).all();
+  return c.json({ rejected: results });
+});
+
 admin.patch("/inboxes/:id", async (c) => {
   const body = await c.req.json<{ name?: unknown }>().catch(() => ({}) as { name?: unknown });
   const name = parseName(body.name);

@@ -23,6 +23,18 @@ All timestamps are Unix milliseconds:
 
 A message's `date` is the exception: it's the email's own Date header, as an ISO 8601 string.
 
+## Status
+
+Every message has a `status`:
+
+| `status` | Meaning |
+|---|---|
+| `received` | mail delivered to an inbox |
+| `bounced` | a delivery status notification — mail that came back |
+| `rejected` | mail for an address no inbox holds; no `inbox_id`, no stored body |
+| `sent` | mail the provider accepted |
+| `failed` | mail the provider refused; `status_reason` carries its code |
+
 ## Deleting
 
 Deletes are soft everywhere. A deleted inbox, webhook or message disappears from the lists, but its

@@ -165,4 +165,21 @@ describe("admin", () => {
     const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM inboxes WHERE address = ?").bind(old.address).first();
     expect(row).toEqual({ n: 1 });
   });
+
+  it("lists rejected mail, newest first", async () => {
+    await createInbox("agent");
+    await receive(eml({ subject: "One" }), "nobody@email.example.com");
+    await receive(eml({ subject: "Two" }), "nobody-else@email.example.com");
+    await receive(eml({ subject: "Real" }), "agent@email.example.com");
+
+    const res = await api("/admin/rejected", { key: ADMIN_KEY });
+    expect(res.status).toBe(200);
+    const { rejected } = (await res.json()) as any;
+    expect(rejected.map((r: any) => r.subject)).toEqual(["Two", "One"]);
+    expect(rejected[0]).toMatchObject({ recipients: "nobody-else@email.example.com", status_reason: "unknown_recipient" });
+  });
+
+  it("needs the admin key to list rejected mail", async () => {
+    expect((await api("/admin/rejected")).status).toBe(401);
+  });
 });

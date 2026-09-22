@@ -20,6 +20,7 @@ curl -H "Authorization: Bearer $ADMIN_KEY" $URL/admin/inboxes
 | `DELETE` | `/admin/inboxes/:id` | Delete the inbox |
 | `POST` | `/admin/inboxes/:id/restore` | Undo a delete |
 | `POST` | `/admin/inboxes/:id/purge` | Permanently remove what is deleted |
+| `GET` | `/admin/rejected` | List mail sent to addresses no inbox holds |
 
 Routes take the inbox `id`, from creation or the list.
 
@@ -93,3 +94,14 @@ curl -X POST "$URL/admin/inboxes/01a0…/purge?confirm=true" -H "Authorization: 
 This is permanent and frees the storage. Without `confirm=true`, purging a deleted inbox returns 400.
 Purge an inbox before deleting its data another way (for example resetting the database), so its
 stored files go with it.
+
+## List rejected mail
+
+```bash
+curl $URL/admin/rejected -H "Authorization: Bearer $ADMIN_KEY"
+# → {"rejected":[{"id":"01a0…","from_addr":"sender@example.org","recipients":"nobody@example.com","subject":"Hi","status_reason":"unknown_recipient","created_at":1789…}]}
+```
+
+Mail sent to an address no inbox holds ([Storage](concepts.md#rejected-mail)). No agent can see these
+— they belong to no inbox — so this is the only way to read them. Returns at most the newest 100.
+These rows have no stored body, and are purged after 30 days regardless of any inbox's retention.
