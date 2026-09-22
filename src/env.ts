@@ -13,6 +13,11 @@ export interface Inbox {
   name: string | null;
 }
 
+// Every shared operation returns one of these. REST maps it to a status and a JSON body, MCP to a
+// tool result. A failure's `data` is for a body that carries more than the error: a failed send
+// answers `{ id, error }`, the id being the row that records the attempt.
+export type Result<T> = { ok: true; data: T } | { ok: false; status: number; error: string; data?: unknown };
+
 export interface WebhookJob {
   webhookId: string;
   messageId: string;
