@@ -191,4 +191,37 @@ describe("admin", () => {
   it("needs the admin key to list rejected mail", async () => {
     expect((await api("/admin/rejected")).status).toBe(401);
   });
+
+  it("reports domains and hints when nothing has advanced", async () => {
+    const inbox = await createInbox("agent");
+    await env.DB.prepare(
+      `INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, created_at, updated_at)
+       SELECT 'm1', id, 'out', 'sent', address, '', 'b@x.com', 's', '[]', ?, ? FROM inboxes`,
+    ).bind(Date.now() - 2 * 3600_000, Date.now() - 2 * 3600_000).run();
+
+    const { domains } = (await (await api("/admin/domains", { key: ADMIN_KEY })).json()) as any;
+    expect(domains).toHaveLength(1);
+    expect(domains[0]).toMatchObject({ domain: "email.example.com", inboxes: 1, sent: 1, advanced: 0 });
+    expect(domains[0].hint).toContain("Subscriptions");
+  });
+
+  it("gives no hint once a message has advanced", async () => {
+    await createInbox("agent");
+    await env.DB.prepare(
+      `INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, created_at, updated_at)
+       SELECT 'm1', id, 'out', 'delivered', address, '', 'b@x.com', 's', '[]', ?, ? FROM inboxes`,
+    ).bind(Date.now() - 2 * 3600_000, Date.now()).run();
+
+    const { domains } = (await (await api("/admin/domains", { key: ADMIN_KEY })).json()) as any;
+    expect(domains[0]).toMatchObject({ sent: 1, advanced: 1, hint: null });
+  });
+
+  it("gives no hint when nothing has been sent", async () => {
+    await createInbox("agent");
+    const { domains } = (await (await api("/admin/domains", { key: ADMIN_KEY })).json()) as any;
+    expect(domains[0]).toMatchObject({ inboxes: 1, sent: 0, advanced: 0, hint: null });
+  });
+  it("needs the admin key", async () => {
+    expect((await api("/admin/domains")).status).toBe(401);
+  });
 });

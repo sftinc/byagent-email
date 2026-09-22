@@ -21,6 +21,7 @@ curl -H "Authorization: Bearer $ADMIN_KEY" $URL/admin/inboxes
 | `POST` | `/admin/inboxes/:id/restore` | Undo a delete |
 | `POST` | `/admin/inboxes/:id/purge` | Permanently remove what is deleted |
 | `GET` | `/admin/rejected` | List mail sent to addresses no inbox holds |
+| `GET` | `/admin/domains` | Report domains whose sent mail isn't advancing past `sent` |
 
 Routes take the inbox `id`, from creation or the list.
 
@@ -107,3 +108,20 @@ No agent can see this mail — it belongs to no inbox — so this is the only wa
 
 Returns at most the newest 100. These rows have no stored body, and are purged after 30 days
 regardless of any inbox's `RETENTION_DAYS`.
+
+## Report domains missing delivery events
+
+```bash
+curl $URL/admin/domains -H "Authorization: Bearer $ADMIN_KEY"
+# → {"domains":[{"domain":"example.com","inboxes":2,"sent":14,"advanced":0,"hint":"Queues > agent-inbox-email-events > Subscriptions > Subscribe to events (source \"Email Sending\", this domain)"}]}
+```
+
+Sent mail only leaves `status: "sent"` when Cloudflare delivers an event for it, and that only
+happens once an admin subscribes the sending domain in the dashboard
+(**Queues > agent-inbox-email-events > Subscriptions**) — nothing credential-free can read that
+subscription state. This route reports the symptom instead: for each domain, `sent` counts its
+outbound mail and `advanced` counts how much of it left `sent`. `hint` names the dashboard path to
+fix it when a domain has mail stuck at `sent` for over an hour; otherwise it's `null`.
+
+**Limit:** a `null` hint isn't proof the subscription is fine — it also means the domain hasn't sent
+anything in the last hour, which looks the same as a missing subscription until then.

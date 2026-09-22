@@ -74,6 +74,32 @@ admin.get("/rejected", async (c) => {
   return c.json({ rejected: results });
 });
 
+const HINT = "Queues > agent-inbox-email-events > Subscriptions > Subscribe to events (source \"Email Sending\", this domain)";
+
+// Nothing credential-free can read subscription state, so the symptom stands in for the cause:
+// without a subscription, sent mail never advances past 'sent'.
+admin.get("/domains", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT substr(i.address, instr(i.address, '@') + 1) AS domain,
+            COUNT(DISTINCT i.id) AS inboxes,
+            COUNT(m.id) AS sent,
+            COUNT(CASE WHEN m.status != 'sent' THEN 1 END) AS advanced,
+            MIN(m.created_at) AS oldest
+     FROM inboxes i
+     LEFT JOIN messages m ON m.inbox_id = i.id AND m.direction = 'out' AND m.deleted_at IS NULL
+     WHERE i.deleted_at IS NULL
+     GROUP BY domain ORDER BY domain`,
+  ).all<{ domain: string; inboxes: number; sent: number; advanced: number; oldest: number | null }>();
+
+  const stale = Date.now() - 3600_000;
+  return c.json({
+    domains: results.map(({ oldest, ...d }) => ({
+      ...d,
+      hint: d.sent > 0 && d.advanced === 0 && oldest !== null && oldest < stale ? HINT : null,
+    })),
+  });
+});
+
 admin.patch("/inboxes/:id", async (c) => {
   const body = await c.req.json<{ name?: unknown }>().catch(() => ({}) as { name?: unknown });
   const name = parseName(body.name);
