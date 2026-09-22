@@ -5,7 +5,7 @@ export interface Env {
   WEBHOOKS: Queue<WebhookJob>;
   RETENTION_DAYS: string;
   ADMIN_KEY: string;
-  API_URL: string; // where the Worker is served; attachment links are minted under it
+  API_DOMAIN: string; // the Worker's hostname; attachment links are https://<this>/attachments/…
 }
 
 export interface Inbox {

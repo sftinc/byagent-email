@@ -31,13 +31,14 @@ tryRun(`npx wrangler queues create ${NAME}-webhooks`);
 tryRun(`npx wrangler queues create ${NAME}-email-events`);
 const { uuid } = JSON.parse(run(`npx wrangler d1 info ${NAME} --json`));
 
-// The Worker mints attachment links under its own URL, the API_URL var in wrangler.jsonc. Returns
-// false when it already holds this URL. A config from before API_URL existed gets the line added.
-function setApiUrl(url) {
+// The Worker mints attachment links under its own hostname, the API_DOMAIN var in wrangler.jsonc.
+// Cloudflare serves every Worker hostname over HTTPS, so only the host is stored. Returns false when
+// the config already holds this domain. A config from before API_DOMAIN existed gets the line added.
+function setApiDomain(domain) {
   const config = readFileSync("wrangler.jsonc", "utf8");
-  const line = `"API_URL": "${url}"`;
-  const updated = /"API_URL":\s*"[^"]*"/.test(config)
-    ? config.replace(/"API_URL":\s*"[^"]*"/, line)
+  const line = `"API_DOMAIN": "${domain}"`;
+  const updated = /"API_DOMAIN":\s*"[^"]*"/.test(config)
+    ? config.replace(/"API_DOMAIN":\s*"[^"]*"/, line)
     : config.replace('"vars": {', `"vars": {\n    ${line},`);
   if (updated === config) return false;
   writeFileSync("wrangler.jsonc", updated);
@@ -45,7 +46,7 @@ function setApiUrl(url) {
 }
 
 if (existsSync("wrangler.jsonc")) {
-  console.log("wrangler.jsonc already exists, leaving it as is apart from API_URL (edit it to change the API hostname).");
+  console.log("wrangler.jsonc already exists, leaving it as is apart from API_DOMAIN (edit it to change the API hostname).");
 } else {
   // Either a custom domain or the generated workers.dev URL, never neither: without an explicit
   // setting the Worker can deploy with no public URL at all.
@@ -56,24 +57,25 @@ if (existsSync("wrangler.jsonc")) {
     .replace("REPLACE_WITH_D1_DATABASE_ID", uuid)
     .replace('"vars": {', `${serving}\n  "vars": {`);
   writeFileSync("wrangler.jsonc", config);
-  // A custom domain's URL is known now, so the first deploy already carries it.
-  if (apiHost) setApiUrl(`https://${apiHost}`);
   console.log("Wrote wrangler.jsonc");
 }
+// A hostname on the command line is where the API is served, new config or not, so the first
+// deploy already carries it.
+if (apiHost) setApiDomain(apiHost);
 
 runVisible(`npx wrangler d1 migrations apply ${NAME} --remote`);
 
 // The deploy prints where the Worker is served: a workers.dev URL, or the custom domain.
 const deployed = run("npx wrangler deploy");
 console.log(deployed);
-const apiUrl =
-  deployed.match(/https:\/\/[^\s]+\.workers\.dev/)?.[0] ??
-  (deployed.match(/^\s+(\S+) \(custom domain\)/m)?.[1] && `https://${deployed.match(/^\s+(\S+) \(custom domain\)/m)[1]}`);
+const apiDomain =
+  deployed.match(/https:\/\/([^\s/]+\.workers\.dev)/)?.[1] ?? deployed.match(/^\s+(\S+) \(custom domain\)/m)?.[1];
+const apiUrl = apiDomain && `https://${apiDomain}`;
 
-// A workers.dev URL only exists once the first deploy has printed it, so it goes into the config
-// now, and the Worker is deployed again to pick it up.
-if (apiUrl && setApiUrl(apiUrl)) {
-  console.log(`Set API_URL to ${apiUrl} in wrangler.jsonc; deploying again so the Worker has it.`);
+// A workers.dev hostname only exists once the first deploy has printed it, so it goes into the
+// config now, and the Worker is deployed again to pick it up.
+if (apiDomain && setApiDomain(apiDomain)) {
+  console.log(`Set API_DOMAIN to ${apiDomain} in wrangler.jsonc; deploying again so the Worker has it.`);
   console.log(run("npx wrangler deploy"));
 }
 
@@ -94,8 +96,8 @@ Done. ADMIN_KEY ${existing ? "kept in" : "saved to"} .dev.vars (gitignored). Use
 ${
   apiUrl
     ? `The API is at ${apiUrl} (saved to .dev.vars as API_URL).`
-    : "Could not read the API URL from the deploy output, so API_URL was not set. Attachment links " +
-      "will not work until it is: set API_URL in the vars of wrangler.jsonc to the Worker's URL, then npm run deploy"
+    : "Could not read the API hostname from the deploy output, so API_DOMAIN was not set. Attachment links " +
+      "will not work until it is: set API_DOMAIN in the vars of wrangler.jsonc to the Worker's hostname, then npm run deploy"
 }
 
 For each email domain, in the Cloudflare dashboard:

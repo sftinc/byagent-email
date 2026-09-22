@@ -27,8 +27,7 @@ export async function mintAttachmentUrl(env: Env, inbox: Inbox, messageId: strin
   view.setUint16(32, index);
   view.setUint32(34, Math.floor(Date.now() / 1000) + TTL_SECONDS);
   bytes.set(await mac(env, inbox.key_hash, bytes.subarray(0, SIGNED)), SIGNED);
-  const apiUrl = env.API_URL.replace(/\/$/, "");
-  return `${apiUrl}/attachments/${bytes.toBase64({ alphabet: "base64url", omitPadding: true })}`;
+  return `https://${env.API_DOMAIN}/attachments/${bytes.toBase64({ alphabet: "base64url", omitPadding: true })}`;
 }
 
 export type Verified = { inbox: Inbox; messageId: string; index: number };

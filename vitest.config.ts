@@ -7,7 +7,7 @@ export default defineConfig(async () => {
     plugins: [
       cloudflareTest({
         wrangler: { configPath: "./wrangler.example.jsonc" },
-        miniflare: { bindings: { ADMIN_KEY: "test-admin-key", API_URL: "https://api.example.com", TEST_MIGRATIONS: migrations } },
+        miniflare: { bindings: { ADMIN_KEY: "test-admin-key", API_DOMAIN: "api.example.com", TEST_MIGRATIONS: migrations } },
       }),
     ],
     // `.claude/` holds git worktrees of this repo, whose test files are copies of these.

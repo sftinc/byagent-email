@@ -22,18 +22,12 @@ function tokenOf(url: string): string {
 }
 
 describe("attachment tokens", () => {
-  it("mints a 72-character base64url token under API_URL that verifies to its parts", async () => {
+  it("mints a 72-character base64url token under https://API_DOMAIN that verifies to its parts", async () => {
     const box = await inbox();
     const messageId = uuidv7();
     const url = await mintAttachmentUrl(env, box, messageId, 3);
     expect(url).toMatch(/^https:\/\/api\.example\.com\/attachments\/[A-Za-z0-9_-]{72}$/);
     expect(await verifyAttachmentToken(env, tokenOf(url))).toEqual({ inbox: box, messageId, index: 3 });
-  });
-
-  it("strips a trailing slash from API_URL when minting", async () => {
-    const box = await inbox();
-    const url = await mintAttachmentUrl({ ...env, API_URL: "https://api.example.com/" }, box, uuidv7(), 0);
-    expect(url).toMatch(/^https:\/\/api\.example\.com\/attachments\/[A-Za-z0-9_-]{72}$/);
   });
 
   it("a token minted under one ADMIN_KEY does not verify under another", async () => {

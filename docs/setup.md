@@ -25,8 +25,10 @@ The setup command:
 Setup is safe to re-run. It keeps existing resources, data and the `ADMIN_KEY` in `.dev.vars`. To
 rotate the admin key, delete that line and re-run. After pulling updates, re-run it to redeploy.
 
-**Upgrading an existing install:** this release needs `API_URL` to mint attachment links. Re-run
-`npm run setup`: it adds `API_URL` to the `vars` in your existing `wrangler.jsonc` and deploys.
+**Upgrading an existing install:** this release needs `API_DOMAIN` to mint attachment links. Re-run
+setup with your API hostname, `npm run setup api.example.com`: it adds `API_DOMAIN` to the `vars` in
+your existing `wrangler.jsonc` before it deploys. Without the hostname it still works, but deploys
+twice.
 
 Be aware that schema changes here are made by editing `0001_init.sql` in place rather than by adding a
 numbered migration, and `wrangler d1 migrations apply` skips a migration it has already recorded — so
@@ -34,7 +36,7 @@ re-running setup will not bring an existing database up to date. Compare the fil
 schema and apply the difference yourself with `wrangler d1 execute <name> --remote`. An install that
 predates delivery events won't get the
 `agent-inbox-email-events` consumer added to its `wrangler.jsonc` by re-running setup — setup changes
-nothing in that file but `API_URL` — so add the `queues.consumers` entry from `wrangler.example.jsonc`
+nothing in that file but `API_DOMAIN` — so add the `queues.consumers` entry from `wrangler.example.jsonc`
 to it by hand.
 
 ## Each email domain
@@ -65,18 +67,19 @@ Worker, so check that step in the dashboard.
 |---|---|---|---|
 | `RETENTION_DAYS` | `vars` in `wrangler.jsonc` | `0` | Mail older than this many days is [purged](concepts.md#purging) daily at 03:00 UTC, permanently, with its files. Messages only. `0` keeps mail forever. |
 | `ADMIN_KEY` | Worker secret, plus `.dev.vars` locally | set by setup | Admin API key |
-| `API_URL` | `vars` in `wrangler.jsonc`, plus `.dev.vars` locally | set by setup | The Worker's own URL; attachment links are minted under it. |
+| `API_DOMAIN` | `vars` in `wrangler.jsonc` | set by setup | The Worker's hostname, without `https://`; attachment links are `https://<API_DOMAIN>/attachments/…`. Cloudflare serves every Worker hostname over HTTPS. |
+| `API_URL` | `.dev.vars` locally | set by setup | The same address as a full URL, for you and your agents to call the API with |
 
 Without a hostname the Worker is served on a `workers.dev` URL, `https://agent-inbox.<your
 subdomain>.workers.dev`, and setup turns that on explicitly (`"workers_dev": true` in
-`wrangler.jsonc`), so there is always a URL. That URL only exists once the first deploy prints it,
-so setup then writes it into `wrangler.jsonc` as `API_URL` and deploys a second time. With a custom
-hostname the URL is known up front and one deploy is enough. Either way setup also saves it as
-`API_URL` in `.dev.vars`.
+`wrangler.jsonc`), so there is always a URL. That hostname only exists once the first deploy prints
+it, so setup then writes it into `wrangler.jsonc` as `API_DOMAIN` and deploys a second time. With a
+custom hostname it is known up front and one deploy is enough.
 
 To add or change the API hostname later, set `routes` in `wrangler.jsonc` to
-`[{ "pattern": "api.example.com", "custom_domain": true }]` and re-run setup, which updates
-`API_URL` to match. Or change both in `wrangler.jsonc` yourself and run `npm run deploy`.
+`[{ "pattern": "api.example.com", "custom_domain": true }]` and re-run `npm run setup
+api.example.com`, which updates `API_DOMAIN` to match. Or change both in `wrangler.jsonc` yourself
+and run `npm run deploy`.
 
 `GET /health` needs no key: it returns `{"ok":true}`, or a 503 if the database is unreachable.
 
