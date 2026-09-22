@@ -11,6 +11,8 @@ export interface Inbox {
   id: string;
   address: string;
   name: string | null;
+  key_hash: string; // signs attachment links; never returned by any route
+  deleted_at: number | null;
 }
 
 // Every shared operation returns one of these. REST maps it to a status and a JSON body, MCP to a

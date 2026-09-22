@@ -24,7 +24,7 @@ app.onError((err, c) => {
 const inboxAuth = createMiddleware<App>(async (c, next) => {
   const token = c.req.header("Authorization")?.replace(/^Bearer /, "");
   const row = token
-    ? await c.env.DB.prepare("SELECT id, address, name FROM inboxes WHERE key_hash = ? AND deleted_at IS NULL")
+    ? await c.env.DB.prepare("SELECT id, address, name, key_hash, deleted_at FROM inboxes WHERE key_hash = ? AND deleted_at IS NULL")
         .bind(await sha256(token))
         .first<Inbox>()
     : null;
