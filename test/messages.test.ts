@@ -110,6 +110,16 @@ describe("messages", () => {
     expect((await api(`/messages/${id}`, { key: other.api_key })).status).toBe(404);
   });
 
+  it("hides rejected mail from an agent", async () => {
+    const inbox = await createInbox("agent");
+    await receive(eml(), "nobody@email.example.com");
+    const { id } = (await env.DB.prepare("SELECT id FROM messages").first<{ id: string }>())!;
+
+    const list = (await (await api("/messages", { key: inbox.api_key })).json()) as any;
+    expect(list.messages).toEqual([]);
+    expect((await api(`/messages/${id}`, { key: inbox.api_key })).status).toBe(404);
+  });
+
   it("returns the full parsed message", async () => {
     const { key, id } = await setup();
     const res = await api(`/messages/${id}`, { key });

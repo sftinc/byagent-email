@@ -64,12 +64,16 @@ export function eml({
 
 // Delivers a raw email to the `email` handler, the way Email Routing would.
 export async function receive(raw: string, to = "agent@email.example.com", overrides: Partial<Env> = {}) {
+  const headers = new Headers();
+  const subject = raw.match(/^Subject: (.*?)\r?$/m)?.[1];
+  if (subject) headers.set("subject", subject);
+
   const message = {
     from: "sender@example.org",
     to,
     raw: new Response(raw).body!,
     rawSize: raw.length,
-    headers: new Headers(),
+    headers,
     setReject: vi.fn(),
     forward: vi.fn(),
     reply: vi.fn(),

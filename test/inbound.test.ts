@@ -5,9 +5,22 @@ import { createInbox, eml, receive, reset } from "./helpers";
 beforeEach(reset);
 
 describe("incoming mail", () => {
-  it("rejects mail for an unknown address", async () => {
-    const message = await receive(eml(), "nobody@email.example.com");
+  it("rejects mail for an unknown address and stores a rejected row", async () => {
+    const message = await receive(eml({ subject: "Spam" }), "nobody@email.example.com");
     expect(message.setReject).toHaveBeenCalledWith("Unknown recipient");
+
+    const row = await env.DB.prepare("SELECT * FROM messages").first<Record<string, unknown>>();
+    expect(row).toMatchObject({
+      inbox_id: null,
+      direction: "in",
+      status: "rejected",
+      status_reason: "unknown_recipient",
+      from_addr: "sender@example.org",
+      recipients: "nobody@email.example.com",
+      subject: "Spam",
+      attachments: "[]",
+    });
+    expect((await env.MAIL.list()).objects).toEqual([]);
   });
 
   it("stores the parsed message, its attachments and a row", async () => {

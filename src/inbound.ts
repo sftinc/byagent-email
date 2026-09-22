@@ -7,7 +7,15 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env): P
   const inbox = await env.DB.prepare("SELECT id FROM inboxes WHERE address = ? AND deleted_at IS NULL")
     .bind(message.to.toLowerCase())
     .first<{ id: string }>();
+  // Mail for an address no inbox holds is still recorded, with no inbox and no stored body:
+  // rejecting happens before the mail is parsed, and there is no prefix to write files under.
   if (!inbox) {
+    await env.DB.prepare(
+      `INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at)
+       VALUES (?, NULL, 'in', 'rejected', 'unknown_recipient', ?, '', ?, ?, '[]', ?)`,
+    )
+      .bind(uuidv7(), message.from, message.to.toLowerCase(), message.headers.get("subject"), Date.now())
+      .run();
     message.setReject("Unknown recipient");
     return;
   }

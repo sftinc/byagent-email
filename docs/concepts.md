@@ -64,6 +64,12 @@ its own prefix:
 Sent mail is stored the same way. D1 holds what lists and filters need: sender, recipients, subject,
 attachment metadata and the timestamps. The raw email is not kept.
 
+### Rejected mail
+
+The domain uses a catch-all rule, so mail for an address no inbox holds still reaches the Worker. It's
+recorded as a message with no `inbox_id` and no stored files — there's no inbox to store them under —
+and rejected. With no inbox, it's invisible to every agent; only an admin can see it.
+
 ## Limits
 
 | | |
