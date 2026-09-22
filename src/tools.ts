@@ -49,7 +49,7 @@ const MESSAGE_SUMMARY = {
     status_reason: { type: ["string", "null"] },
     from: CONTACT,
     recipients: { type: "array", items: { type: "string" } },
-    subject: { type: "string" },
+    subject: { type: ["string", "null"] },
     attachments: { type: "array", items: ATTACHMENT },
     created_at: { type: "integer" },
     updated_at: { type: "integer" },
@@ -132,6 +132,7 @@ const inboxTools: Tool[] = [
       type: "object",
       properties: {
         ...MESSAGE_SUMMARY.properties,
+        from: { anyOf: [CONTACT, { type: "null" }] },
         message_id: { type: ["string", "null"] },
         in_reply_to: { type: ["string", "null"] },
         references: { type: "array", items: { type: "string" } },

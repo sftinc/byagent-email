@@ -236,10 +236,12 @@ describe("tool surface", () => {
     expect(r.structuredContent).toEqual({ error: `list_messages: This key is for ${inbox.address}` });
   });
 
-  it("a thrown error inside a tool becomes a tool error, not an HTTP 500", async () => {
+  it("a thrown error inside a tool becomes a tool error, not an HTTP 500, and is logged", async () => {
     vi.stubGlobal("fetch", async () => new Response("", { status: 500 }));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const r = await call("create_inbox", { address: "boom@email.example.com" }, ADMIN_KEY);
     expect(r).toMatchObject({ isError: true, structuredContent: { error: "Internal error" } });
+    expect(error).toHaveBeenCalled();
   });
 });
 
@@ -258,6 +260,21 @@ describe("tools match their REST routes", () => {
     expect(peek.structuredContent.attachments[0].url).toMatch(/\/attachments\//);
     const read = await call("read_message", { id }, inbox.api_key);
     expect(read.structuredContent.read_at).toEqual(expect.any(Number));
+  });
+
+  it("mail with no Subject header: list_messages and read_message still succeed, subject null", async () => {
+    const inbox = await createInbox("agent");
+    await receive(
+      "From: Sender <sender@example.org>\r\nTo: agent@email.example.com\r\nDate: Sat, 19 Sep 2026 10:00:00 +0000\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nNo subject\r\n",
+      inbox.address,
+    );
+    const list = await call("list_messages", {}, inbox.api_key);
+    expect(list.isError).toBeUndefined();
+    expect(list.structuredContent.messages[0].subject).toBeNull();
+
+    const id = list.structuredContent.messages[0].id;
+    const read = await call("read_message", { id }, inbox.api_key);
+    expect(read.isError).toBeUndefined();
   });
 
   it("list_messages validates like the route", async () => {
@@ -310,6 +327,7 @@ describe("tools match their REST routes", () => {
   });
 
   it("admin: create, list, rename, rotate, delete, restore, purge, rejected, domains", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
     const created = await call("create_inbox", { address: "New@email.example.com", name: "New Bot" }, ADMIN_KEY);
     expect(created.structuredContent).toEqual({ id: expect.any(String), address: "new@email.example.com", name: "New Bot", api_key: expect.any(String) });
     const { id, address } = created.structuredContent;
