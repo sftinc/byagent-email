@@ -72,7 +72,8 @@ Worker, so check that step in the dashboard.
 
 Without a hostname the Worker is served on a `workers.dev` URL, `https://agent-inbox.<your
 subdomain>.workers.dev`, and setup turns that on explicitly (`"workers_dev": true` in
-`wrangler.jsonc`), so there is always a URL. That hostname only exists once the first deploy prints
+`wrangler.jsonc`), so there is always a URL. It turns preview URLs off (`"preview_urls": false`),
+which wrangler would otherwise enable alongside workers.dev. That hostname only exists once the first deploy prints
 it, so setup then writes it into `wrangler.jsonc` as `API_DOMAIN` and deploys a second time. With a
 custom hostname it is known up front and one deploy is enough.
 

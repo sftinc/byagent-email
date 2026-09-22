@@ -16,11 +16,16 @@ const tryRun = (cmd) => {
     return null; // usually "already exists"
   }
 };
+// Stops setup with a message for the person running it, not a stack trace.
+const fail = (message) => {
+  console.error(message);
+  process.exit(1);
+};
 
 // npm run setup [api.example.com]
 // The optional hostname serves the API on a custom domain. Without it the Worker uses workers.dev.
 const apiHost = process.argv[2]?.toLowerCase();
-if (apiHost && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(apiHost)) throw new Error(`Not a valid hostname: ${apiHost}`);
+if (apiHost && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(apiHost)) fail(`Not a valid hostname: ${apiHost}`);
 
 run("npx wrangler whoami"); // fails early when not logged in
 
@@ -58,7 +63,7 @@ function aboveVars(config, lines) {
 // setting the Worker can deploy with no public URL at all.
 const serving = apiHost
   ? [`"routes": [{ "pattern": "${apiHost}", "custom_domain": true }],`, '"workers_dev": false,', '"preview_urls": false,']
-  : ['"workers_dev": true,'];
+  : ['"workers_dev": true,', '"preview_urls": false,'];
 
 if (!existsSync("wrangler.jsonc")) {
   const config = readFileSync("wrangler.example.jsonc", "utf8").replace("REPLACE_WITH_D1_DATABASE_ID", uuid);
@@ -70,7 +75,7 @@ if (!existsSync("wrangler.jsonc")) {
   // hostname is left for the user to change, since its routes may be written any number of ways.
   const config = readFileSync("wrangler.jsonc", "utf8");
   if (/"routes"\s*:/.test(config)) {
-    throw new Error(`wrangler.jsonc already routes another hostname: change its "routes" pattern to ${apiHost}, then re-run.`);
+    fail(`wrangler.jsonc already routes another hostname: change its "routes" pattern to ${apiHost}, then re-run.`);
   }
   const routed = aboveVars(config.replace(/^[ \t]*"(workers_dev|preview_urls)":.*\n/gm, ""), serving);
   writeFileSync("wrangler.jsonc", routed);
