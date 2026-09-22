@@ -190,4 +190,29 @@ describe("delivery events", () => {
     await run(bounceEvent("<m@x>"));
     expect((await status()).status).toBe("received");
   });
+
+  it("queues a webhook for a terminal failure", async () => {
+    await sentMessage("<m@x>");
+    await env.DB.prepare("INSERT INTO webhooks (id, inbox_id, url, secret, created_at) VALUES ('w1','i1','https://a.example/hook','s',0)").run();
+    const sendBatch = vi.fn();
+    await handleDeliveryEvent(
+      createMessageBatch("agent-inbox-email-events", [{ id: "ev-1", timestamp: new Date(), attempts: 1, body: bounceEvent("<m@x>") }]) as any,
+      { ...env, WEBHOOKS: { sendBatch } as any },
+    );
+    expect(sendBatch).toHaveBeenCalledWith([{ body: { webhookId: "w1", messageId: "m1", status: "bounced" } }]);
+  });
+
+  it("queues no webhook for delivered or deferred", async () => {
+    await sentMessage("<m@x>");
+    await env.DB.prepare("INSERT INTO webhooks (id, inbox_id, url, secret, created_at) VALUES ('w1','i1','https://a.example/hook','s',0)").run();
+    const sendBatch = vi.fn();
+    const e = bounceEvent("<m@x>");
+    e.type = "cf.email.sending.message.delivered";
+    e.payload.delivery = { status: "delivered", provider: "cloudflare" } as any;
+    await handleDeliveryEvent(
+      createMessageBatch("agent-inbox-email-events", [{ id: "ev-1", timestamp: new Date(), attempts: 1, body: e }]) as any,
+      { ...env, WEBHOOKS: { sendBatch } as any },
+    );
+    expect(sendBatch).not.toHaveBeenCalled();
+  });
 });

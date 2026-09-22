@@ -1,7 +1,8 @@
 # Webhooks
 
-When mail arrives, each of the inbox's webhooks gets a `POST`. Webhooks are optional: an agent can
-poll [`GET /messages`](agent-api.md#list-messages) instead, and polling is the fallback whenever a
+Each of the inbox's webhooks gets a `POST` in two cases: mail arrives, or a message you sent ends
+in a terminal status that isn't success. Webhooks are optional: an agent can poll
+[`GET /messages`](agent-api.md#list-messages) instead, and polling is the fallback whenever a
 delivery fails.
 
 ## Register one
@@ -32,8 +33,9 @@ curl -X POST $URL/webhooks/01a0…/restore -H "Authorization: Bearer $API_KEY"
 ## The payload
 
 ```json
-{ "inbox": "claude@example.com",
-  "message": { "id": "…", "status": "received", "status_reason": null,
+{ "event": "mail",
+  "inbox": "claude@example.com",
+  "message": { "id": "…", "direction": "in", "status": "received", "status_reason": null,
                "message_id": "<…>", "in_reply_to": null, "references": [],
                "from": { "name": "Bob", "address": "bob@example.org" }, "reply_to": [],
                "to": [{ "name": "", "address": "claude@example.com" }],
@@ -44,8 +46,13 @@ curl -X POST $URL/webhooks/01a0…/restore -H "Authorization: Bearer $API_KEY"
 
 | Field | |
 |---|---|
-| `status` | `"received"`, or `"bounced"` when the message is a delivery status notification. Webhooks are sent only for inbound mail, so `"sent"`, `"failed"` and `"rejected"` never appear here. |
-| `status_reason` | Why the status is `"bounced"`; `null` for ordinary received mail. |
+| `event` | `"mail"` for an arrival, `"status"` when a message you sent reached a terminal status that isn't success. |
+| `message.direction` | `"in"` for received mail, `"out"` for a status delivery about a message you sent. |
+| `message.status` | For `"mail"`: `"received"`. For `"status"`: `"bounced"`, `"complained"`, `"rejected"` or `"failed"` — whichever ended the send. `"delivered"` and `"deferred"` never fire a webhook: delivered needs no interruption, and deferred resolves itself. |
+| `message.status_reason` | Why the status is what it is; `null` when there's nothing to add. |
+
+A status delivery carries the same message shape as an arrival — same fields, same attachment list —
+just with `event: "status"` and `direction: "out"` instead.
 
 It leaves out `html`, `cc`, `bcc` and the full header list, to stay small. Fetch
 [`GET /messages/:id`](agent-api.md#read-a-message) for those, and for attachment downloads. Note that

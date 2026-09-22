@@ -143,9 +143,11 @@ describe("webhook delivery", () => {
     const expected = await hmacSha256(hook.secret, `${headers["X-Timestamp"]}.${init.body}`);
     expect(headers["X-Signature"]).toBe(`sha256=${expected}`);
     expect(JSON.parse(init.body as string)).toEqual({
+      event: "mail",
       inbox: inbox.address,
       message: {
         id: messageId,
+        direction: "in",
         status: "received",
         status_reason: null,
         message_id: null,
@@ -181,6 +183,27 @@ describe("webhook delivery", () => {
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     const body = JSON.parse(init.body as string);
     expect(body.message).toMatchObject({ status: "bounced", status_reason: "null-return-path" });
+  });
+
+  it("delivers a status webhook describing the event that queued it", async () => {
+    const inbox = await createInbox("agent");
+    const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string };
+    const send = vi.fn().mockResolvedValue({ messageId: "<m@x>" });
+    await api("/send", { method: "POST", key: inbox.api_key, body: { to: "b@example.org", subject: "Hi", text: "Hello" } }, { EMAIL: { send } as any });
+    const row = (await env.DB.prepare("SELECT id FROM messages WHERE direction = 'out'").first<{ id: string }>())!;
+    await env.DB.prepare("UPDATE messages SET status = 'bounced', status_reason = '5.1.1' WHERE id = ?").bind(row.id).run();
+
+    const batch = createMessageBatch("agent-inbox-webhooks", [
+      { id: "job-1", timestamp: Date.now(), attempts: 1, body: { webhookId: hook.id, messageId: row.id, status: "bounced" } },
+    ]);
+    const fetchMock = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+    await handleQueue(batch, env);
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.event).toBe("status");
+    expect(body.message).toMatchObject({ id: row.id, direction: "out", status: "bounced", status_reason: "5.1.1" });
   });
 
   it("retries with backoff on a failed delivery", async () => {

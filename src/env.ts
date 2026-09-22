@@ -16,6 +16,8 @@ export interface Inbox {
 export interface WebhookJob {
   webhookId: string;
   messageId: string;
+  // The status this job fired for. Absent for inbound mail, which has only one state.
+  status?: string;
 }
 
 // What Cloudflare Email Service publishes to the delivery-events queue. Only the fields we read.

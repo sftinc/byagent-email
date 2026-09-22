@@ -40,9 +40,9 @@ export async function handleDeliveryEvent(batch: MessageBatch<DeliveryEvent>, en
       // message whether or not someone has since hidden it, and recording it keeps a restored
       // message truthful. Nothing reaches the user about a deleted message — `deliverWebhook`
       // already filters on `deleted_at IS NULL` (src/webhooks.ts:13).
-      const row = await env.DB.prepare("SELECT status FROM messages WHERE message_id = ? AND direction = 'out'")
+      const row = await env.DB.prepare("SELECT id, inbox_id, status FROM messages WHERE message_id = ? AND direction = 'out'")
         .bind(msg.body.payload.messageId)
-        .first<{ status: string }>();
+        .first<{ id: string; inbox_id: string; status: string }>();
 
       if (!row) {
         if (Date.now() - msg.timestamp.getTime() < GRACE_MS) {
@@ -59,6 +59,21 @@ export async function handleDeliveryEvent(batch: MessageBatch<DeliveryEvent>, en
         )
           .bind(status, reasonFor(msg.body, status), Date.now(), msg.body.payload.messageId)
           .run();
+
+        // Delivered needs no interruption; everything else terminal is worth waking the agent for,
+        // because by the time this fires nobody is still holding the `POST /send` response.
+        if (TERMINAL.has(status) && status !== "delivered") {
+          const { results } = await env.DB.prepare("SELECT id FROM webhooks WHERE inbox_id = ? AND deleted_at IS NULL")
+            .bind(row.inbox_id)
+            .all<{ id: string }>();
+          if (results.length > 0) {
+            try {
+              await env.WEBHOOKS.sendBatch(results.map((w) => ({ body: { webhookId: w.id, messageId: row.id, status } })));
+            } catch (err) {
+              console.error(err);
+            }
+          }
+        }
       }
     }
     msg.ack();
