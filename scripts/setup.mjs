@@ -31,8 +31,21 @@ tryRun(`npx wrangler queues create ${NAME}-webhooks`);
 tryRun(`npx wrangler queues create ${NAME}-email-events`);
 const { uuid } = JSON.parse(run(`npx wrangler d1 info ${NAME} --json`));
 
+// The Worker mints attachment links under its own URL, the API_URL var in wrangler.jsonc. Returns
+// false when it already holds this URL. A config from before API_URL existed gets the line added.
+function setApiUrl(url) {
+  const config = readFileSync("wrangler.jsonc", "utf8");
+  const line = `"API_URL": "${url}"`;
+  const updated = /"API_URL":\s*"[^"]*"/.test(config)
+    ? config.replace(/"API_URL":\s*"[^"]*"/, line)
+    : config.replace('"vars": {', `"vars": {\n    ${line},`);
+  if (updated === config) return false;
+  writeFileSync("wrangler.jsonc", updated);
+  return true;
+}
+
 if (existsSync("wrangler.jsonc")) {
-  console.log("wrangler.jsonc already exists, leaving it as is (edit it to change the API hostname).");
+  console.log("wrangler.jsonc already exists, leaving it as is apart from API_URL (edit it to change the API hostname).");
 } else {
   // Either a custom domain or the generated workers.dev URL, never neither: without an explicit
   // setting the Worker can deploy with no public URL at all.
@@ -43,6 +56,8 @@ if (existsSync("wrangler.jsonc")) {
     .replace("REPLACE_WITH_D1_DATABASE_ID", uuid)
     .replace('"vars": {', `${serving}\n  "vars": {`);
   writeFileSync("wrangler.jsonc", config);
+  // A custom domain's URL is known now, so the first deploy already carries it.
+  if (apiHost) setApiUrl(`https://${apiHost}`);
   console.log("Wrote wrangler.jsonc");
 }
 
@@ -55,14 +70,19 @@ const apiUrl =
   deployed.match(/https:\/\/[^\s]+\.workers\.dev/)?.[0] ??
   (deployed.match(/^\s+(\S+) \(custom domain\)/m)?.[1] && `https://${deployed.match(/^\s+(\S+) \(custom domain\)/m)[1]}`);
 
+// A workers.dev URL only exists once the first deploy has printed it, so it goes into the config
+// now, and the Worker is deployed again to pick it up.
+if (apiUrl && setApiUrl(apiUrl)) {
+  console.log(`Set API_URL to ${apiUrl} in wrangler.jsonc; deploying again so the Worker has it.`);
+  console.log(run("npx wrangler deploy"));
+}
+
 // .dev.vars (gitignored) holds the admin key and the API URL, so tools and agents can find them.
 const lines = existsSync(".dev.vars") ? readFileSync(".dev.vars", "utf8").split("\n").filter(Boolean) : [];
 const vars = new Map(lines.map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]));
 const existing = vars.get("ADMIN_KEY");
 const adminKey = existing || randomBytes(32).toString("hex");
 run("npx wrangler secret put ADMIN_KEY", { input: adminKey });
-// The Worker mints attachment links under its own URL, which it can only know from here.
-if (apiUrl) run("npx wrangler secret put API_URL", { input: apiUrl });
 vars.set("ADMIN_KEY", adminKey);
 if (apiUrl) vars.set("API_URL", apiUrl);
 writeFileSync(".dev.vars", `${[...vars].map(([k, v]) => `${k}=${v}`).join("\n")}\n`);
@@ -75,7 +95,7 @@ ${
   apiUrl
     ? `The API is at ${apiUrl} (saved to .dev.vars as API_URL).`
     : "Could not read the API URL from the deploy output, so API_URL was not set. Attachment links " +
-      "will not work until it is: npx wrangler secret put API_URL"
+      "will not work until it is: set API_URL in the vars of wrangler.jsonc to the Worker's URL, then npm run deploy"
 }
 
 For each email domain, in the Cloudflare dashboard:

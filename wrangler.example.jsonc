@@ -6,7 +6,8 @@
   // read afterwards. Sampling applies per invocation, so keep the rate at 1 or lose whole deliveries.
   "observability": { "enabled": true, "head_sampling_rate": 1 },
   "vars": {
-    "RETENTION_DAYS": "0" // days to keep mail, sent and received; "0" keeps it forever
+    "RETENTION_DAYS": "0", // days to keep mail, sent and received; "0" keeps it forever
+    "API_URL": "" // the Worker's own URL, set by setup; attachment links are minted under it
   },
   "d1_databases": [
     {
