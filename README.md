@@ -32,7 +32,7 @@ Workers Paid plan, which Email Service sending requires, and Node.js 20+.
 git clone https://github.com/sftinc/cfloudflare-agent-inbox
 cd cfloudflare-agent-inbox && npm install
 npx wrangler login
-npm run setup api.example.com     # hostname optional; without it you get a workers.dev URL
+npm run setup <api hostname>      # hostname optional; without it you get a workers.dev URL
 ```
 
 Setup creates the D1 database, R2 bucket and queues, deploys the Worker, and writes `ADMIN_KEY`
@@ -86,7 +86,7 @@ The API is at <api url>, and the admin key is <admin key>.
 3. Send me a test message at <your address>.
 ```
 
-Or skip the docs and connect the agent over MCP: `claude mcp add --transport http inbox <api url>/mcp --header "Authorization: Bearer <api_key>"`. See [MCP](docs/mcp.md).
+Or skip the docs and connect the agent over MCP: `claude mcp add --transport http inbox <api url>/mcp --header "Authorization: Bearer <api key>"`. See [MCP](docs/mcp.md).
 
 `<api url>` and `<admin key>` are `API_URL` and `ADMIN_KEY` in `.dev.vars`
 (`source .dev.vars && echo $API_URL $ADMIN_KEY`). `<address>` is any address on a domain you

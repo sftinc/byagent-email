@@ -10,7 +10,7 @@
 
 ```bash
 npm install
-npm run setup api.example.com
+npm run setup <api hostname>
 ```
 
 The setup command:
@@ -26,7 +26,7 @@ Setup is safe to re-run. It keeps existing resources, data and the `ADMIN_KEY` i
 rotate the admin key, delete that line and re-run. After pulling updates, re-run it to redeploy.
 
 **Upgrading an existing install:** this release needs `API_DOMAIN` to mint attachment links. Re-run
-setup with your API hostname, `npm run setup api.example.com`: it adds `API_DOMAIN` to the `vars` in
+setup with your API hostname, `npm run setup <api hostname>`: it adds `API_DOMAIN` to the `vars` in
 your existing `wrangler.jsonc` before it deploys. Without the hostname it still works, but deploys
 twice.
 
@@ -77,8 +77,8 @@ it, so setup then writes it into `wrangler.jsonc` as `API_DOMAIN` and deploys a 
 custom hostname it is known up front and one deploy is enough.
 
 To add or change the API hostname later, set `routes` in `wrangler.jsonc` to
-`[{ "pattern": "api.example.com", "custom_domain": true }]` and re-run `npm run setup
-api.example.com`, which updates `API_DOMAIN` to match. Or change both in `wrangler.jsonc` yourself
+`[{ "pattern": "<api hostname>", "custom_domain": true }]` and re-run `npm run setup
+<api hostname>`, which updates `API_DOMAIN` to match. Or change both in `wrangler.jsonc` yourself
 and run `npm run deploy`.
 
 `GET /health` needs no key: it returns `{"ok":true}`, or a 503 if the database is unreachable.

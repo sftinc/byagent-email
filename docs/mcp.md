@@ -6,7 +6,7 @@ endpoint, `POST /mcp`, on the same URL as the REST API.
 ## Connect
 
 Every client configures the same two things: the URL, and one key in the `Authorization` header.
-Which key you paste decides what the connection can do.
+Which key you paste decides what the connection can do. `<api url>` is `API_URL` in `.dev.vars`.
 
 | Key | Tools | Reaches |
 |---|---|---|
@@ -16,15 +16,15 @@ Which key you paste decides what the connection can do.
 Claude Code:
 
 ```bash
-claude mcp add --transport http inbox https://api.example.com/mcp \
-  --header "Authorization: Bearer $API_KEY"
+claude mcp add --transport http inbox <api url>/mcp \
+  --header "Authorization: Bearer <api key>"
 ```
 
 Cursor, in `mcp.json`:
 
 ```json
-{ "mcpServers": { "inbox": { "url": "https://api.example.com/mcp",
-                             "headers": { "Authorization": "Bearer …" } } } }
+{ "mcpServers": { "inbox": { "url": "<api url>/mcp",
+                             "headers": { "Authorization": "Bearer <api key>" } } } }
 ```
 
 Clients that only speak OAuth (Claude Desktop) can reach it through
