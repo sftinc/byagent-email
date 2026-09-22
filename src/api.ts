@@ -6,6 +6,7 @@ import { verifyAttachmentToken } from "./attachments";
 import { authenticate, bearer, resolveInbox } from "./auth";
 import type { Env, Inbox } from "./env";
 import { type Attachment, loadAttachment } from "./mail";
+import { mcp } from "./mcp";
 import { deleteMessage, findMessage, listMessages, markUnread, readMessage, restoreMessage } from "./messages";
 import { sendMail } from "./send";
 import { reply } from "./reply";
@@ -66,6 +67,7 @@ app.get("/attachments/:token", async (c) => {
 });
 
 app.route("/admin", admin);
+app.route("/mcp", mcp);
 app.use("*", except(["/admin/*", "/health", "/attachments/*", "/mcp"], inboxAuth));
 
 app.get("/messages", async (c) =>
