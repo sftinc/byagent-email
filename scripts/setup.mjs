@@ -67,9 +67,16 @@ vars.set("ADMIN_KEY", adminKey);
 if (apiUrl) vars.set("API_URL", apiUrl);
 writeFileSync(".dev.vars", `${[...vars].map(([k, v]) => `${k}=${v}`).join("\n")}\n`);
 
+if (!apiUrl) process.exitCode = 1;
+
 console.log(`
 Done. ADMIN_KEY ${existing ? "kept in" : "saved to"} .dev.vars (gitignored). Use it with: source .dev.vars
-${apiUrl ? `The API is at ${apiUrl} (saved to .dev.vars as API_URL).` : "Could not read the API URL from the deploy output."}
+${
+  apiUrl
+    ? `The API is at ${apiUrl} (saved to .dev.vars as API_URL).`
+    : "Could not read the API URL from the deploy output, so API_URL was not set. Attachment links " +
+      "will not work until it is: npx wrangler secret put API_URL"
+}
 
 For each email domain, in the Cloudflare dashboard:
   1. Email > Email Sending > Onboard Domain
