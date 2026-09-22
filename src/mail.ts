@@ -1,7 +1,6 @@
 import type { Address, Email } from "postal-mime";
 import { uuidv7 } from "./crypto";
 import type { Env, Inbox } from "./env";
-import { addressOf } from "./send";
 
 // Every message is stored under its own prefix: `message.json` plus one file per attachment,
 // named by its position. Mail is parsed once, when it arrives, and never re-parsed on read.
@@ -101,6 +100,10 @@ export async function loadMessage(env: Env, inboxId: string, id: string): Promis
 
 export function loadAttachment(env: Env, inboxId: string, id: string, index: number): Promise<R2ObjectBody | null> {
   return env.MAIL.get(messageKey(inboxId, id, String(index)));
+}
+
+export function addressOf(recipient: string | EmailAddress): string {
+  return typeof recipient === "string" ? recipient : recipient.email;
 }
 
 // Sent mail is stored the same way, built from what was sent rather than from a parsed email.

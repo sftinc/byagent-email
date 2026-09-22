@@ -2,9 +2,12 @@ const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_RECIPIENTS = 50;
 const MAX_ATTACHMENTS = 32;
 
+import type { Env, Inbox, Result } from "./env";
+import { loadMessage, saveSent } from "./mail";
+import { findMessage } from "./messages";
 import { parseName } from "./validate";
 
-type Result = { ok: true; message: EmailMessageBuilder } | { ok: false; status: 400 | 413; error: string };
+type BuildEmailResult = { ok: true; message: EmailMessageBuilder } | { ok: false; status: 400 | 413; error: string };
 
 function list(value: unknown): any[] {
   if (value === undefined) return [];
@@ -28,12 +31,8 @@ function recipients(values: unknown[]): (string | EmailAddress)[] | null {
   return out;
 }
 
-export function addressOf(recipient: string | EmailAddress): string {
-  return typeof recipient === "string" ? recipient : recipient.email;
-}
-
 // Validates an agent's POST /send body and turns it into an Email Service message from `from`.
-export function buildEmail(body: any, from: string | EmailAddress): Result {
+export function buildEmail(body: any, from: string | EmailAddress): BuildEmailResult {
   if (!body || typeof body !== "object") return { ok: false, status: 400, error: "Body must be a JSON object" };
 
   const [to, cc, bcc] = [body.to, body.cc, body.bcc].map((value) => recipients(list(value)));
@@ -91,4 +90,32 @@ export function buildEmail(body: any, from: string | EmailAddress): Result {
     }));
   }
   return { ok: true, message };
+}
+
+// Validates and sends one message from `inbox`. `reply_to_id` names one of the inbox's messages
+// to reply to in its thread. A provider refusal is a failure that still records a row, so the
+// caller gets the row's id alongside the error.
+export async function sendMail(env: Env, inbox: Inbox, body: any): Promise<Result<{ id: string; messageId: string }>> {
+  const from = inbox.name ? { email: inbox.address, name: inbox.name } : inbox.address;
+  const built = buildEmail(body, from);
+  if (!built.ok) return { ok: false, status: built.status, error: built.error };
+
+  if (body.reply_to_id !== undefined) {
+    const replyTo = typeof body.reply_to_id === "string" ? body.reply_to_id : "";
+    const row = replyTo ? await findMessage(env, inbox.id, replyTo) : null;
+    const parent = row && (await loadMessage(env, inbox.id, replyTo));
+    if (!parent?.message_id) return { ok: false, status: 400, error: "`reply_to_id` is not a message in this inbox" };
+    const references = [...parent.references, parent.message_id];
+    built.message.headers = { "In-Reply-To": parent.message_id, References: references.join(" ") };
+  }
+  let messageId: string;
+  try {
+    ({ messageId } = await env.EMAIL.send(built.message));
+  } catch (err: any) {
+    const code = err?.code ?? err?.message ?? "Send failed";
+    const id = await saveSent(env, inbox, built.message, null, code);
+    return { ok: false, status: 502, error: code, data: { id } };
+  }
+  const id = await saveSent(env, inbox, built.message, messageId);
+  return { ok: true, data: { id, messageId } };
 }

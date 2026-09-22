@@ -4,9 +4,9 @@ import { createMiddleware } from "hono/factory";
 import { admin } from "./admin";
 import { randomToken, sha256, uuidv7 } from "./crypto";
 import type { Env, Inbox } from "./env";
-import { type Attachment, loadAttachment, loadMessage, saveSent } from "./mail";
+import { type Attachment, loadAttachment } from "./mail";
 import { deleteMessage, findMessage, listMessages, markUnread, readMessage, restoreMessage } from "./messages";
-import { buildEmail } from "./send";
+import { sendMail } from "./send";
 import { reply } from "./reply";
 import { BAD_BEARER, BAD_NAME, parseBearer, parseName } from "./validate";
 
@@ -148,30 +148,4 @@ app.post("/webhooks/:id/restore", async (c) => {
   return c.json({ ok: true });
 });
 
-app.post("/send", async (c) => {
-  const inbox = c.get("inbox");
-  const from = inbox.name ? { email: inbox.address, name: inbox.name } : inbox.address;
-  const body = await c.req.json<any>().catch(() => null);
-  const built = buildEmail(body, from);
-  if (!built.ok) return c.json({ error: built.error }, built.status);
-
-  // `reply_to_id` is one of this inbox's messages: reply in its thread.
-  if (body.reply_to_id !== undefined) {
-    const replyTo = typeof body.reply_to_id === "string" ? body.reply_to_id : "";
-    const row = replyTo ? await findMessage(c.env, inbox.id, replyTo) : null;
-    const parent = row && (await loadMessage(c.env, inbox.id, replyTo));
-    if (!parent?.message_id) return c.json({ error: "`reply_to_id` is not a message in this inbox" }, 400);
-    const references = [...parent.references, parent.message_id];
-    built.message.headers = { "In-Reply-To": parent.message_id, References: references.join(" ") };
-  }
-  let messageId: string;
-  try {
-    ({ messageId } = await c.env.EMAIL.send(built.message));
-  } catch (err: any) {
-    const code = err?.code ?? err?.message ?? "Send failed";
-    const id = await saveSent(c.env, inbox, built.message, null, code);
-    return c.json({ id, error: code }, 502);
-  }
-  const id = await saveSent(c.env, inbox, built.message, messageId);
-  return c.json({ id, messageId });
-});
+app.post("/send", async (c) => reply(c, await sendMail(c.env, c.get("inbox"), await c.req.json<any>().catch(() => null))));
