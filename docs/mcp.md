@@ -27,7 +27,7 @@ Cursor, in `mcp.json`:
                              "headers": { "Authorization": "Bearer …" } } } }
 ```
 
-Clients that only speak OAuth (Claude Desktop, claude.ai connectors) can reach it through
+Clients that only speak OAuth (Claude Desktop) can reach it through
 `mcp-remote` with the same header. The server speaks the current protocol revision (`2026-07-28`)
 and the two before it (`2025-11-25`, `2025-06-18`).
 
