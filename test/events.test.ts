@@ -34,11 +34,9 @@ async function sentMessage(messageId: string) {
   ).bind(messageId).run();
 }
 
-const run = (body: unknown, ageMs = 0) =>
+const run = (body: unknown) =>
   handleDeliveryEvent(
-    createMessageBatch("agent-inbox-email-events", [
-      { id: "ev-1", timestamp: new Date(Date.now() - ageMs), attempts: 1, body },
-    ]) as any,
+    createMessageBatch("agent-inbox-email-events", [{ id: "ev-1", timestamp: new Date(), attempts: 1, body }]) as any,
     env,
   );
 

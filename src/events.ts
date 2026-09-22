@@ -28,6 +28,10 @@ export async function handleDeliveryEvent(batch: MessageBatch<DeliveryEvent>, en
   for (const msg of batch.messages) {
     const status = STATUS[msg.body.type];
     if (status) {
+      // No `deleted_at IS NULL` here, deliberately: an event is a fact about what happened to the
+      // message whether or not someone has since hidden it, and recording it keeps a restored
+      // message truthful. Nothing reaches the user about a deleted message — `deliverWebhook`
+      // already filters on `deleted_at IS NULL` (src/webhooks.ts:13).
       await env.DB.prepare(
         "UPDATE messages SET status = ?, status_reason = ?, updated_at = ? WHERE message_id = ? AND direction = 'out'",
       )
