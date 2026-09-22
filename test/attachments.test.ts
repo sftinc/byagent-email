@@ -30,6 +30,18 @@ describe("attachment tokens", () => {
     expect(await verifyAttachmentToken(env, tokenOf(url))).toEqual({ inbox: box, messageId, index: 3 });
   });
 
+  it("strips a trailing slash from API_URL when minting", async () => {
+    const box = await inbox();
+    const url = await mintAttachmentUrl({ ...env, API_URL: "https://api.example.com/" }, box, uuidv7(), 0);
+    expect(url).toMatch(/^https:\/\/api\.example\.com\/attachments\/[A-Za-z0-9_-]{72}$/);
+  });
+
+  it("a token minted under one ADMIN_KEY does not verify under another", async () => {
+    const box = await inbox();
+    const token = tokenOf(await mintAttachmentUrl(env, box, uuidv7(), 0));
+    expect(await verifyAttachmentToken({ ...env, ADMIN_KEY: "other" }, token)).toBe("invalid");
+  });
+
   it("any flipped byte is invalid", async () => {
     const box = await inbox();
     const token = tokenOf(await mintAttachmentUrl(env, box, uuidv7(), 0));
@@ -109,6 +121,8 @@ describe("GET /attachments/:token", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("text/plain");
     expect(res.headers.get("Content-Disposition")).toBe(`attachment; filename="notes.txt"; filename*=UTF-8''notes.txt`);
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(res.headers.get("Content-Security-Policy")).toBe("sandbox");
     expect(await res.text()).toBe("file body\n");
   });
 

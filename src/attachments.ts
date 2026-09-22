@@ -1,16 +1,20 @@
+import { findInbox } from "./auth";
 import { bytesToUuid, hmacSha256Bytes, uuidToBytes } from "./crypto";
 import type { Env, Inbox } from "./env";
 
 // A link to one attachment that needs no API key: 54 bytes, base64url, in the path.
 //   inbox id (16) · message id (16) · index (u16) · expiry, Unix seconds (u32) · HMAC-SHA256[:16]
-// Signed with the inbox's key_hash, so rotating its key revokes every link it minted, and no
-// other inbox's. Fifteen minutes, because these land in transcripts that outlive them.
+// Signed with ADMIN_KEY and the inbox's key_hash together, so rotating the inbox's key revokes
+// its links and reading D1 alone — which holds key_hash — is not enough to mint one. Fifteen
+// minutes, because these land in transcripts that outlive them.
 const TTL_SECONDS = 15 * 60;
 const SIGNED = 38;
 const MAC = 16;
 
-async function mac(keyHash: string, tuple: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
-  return (await hmacSha256Bytes(keyHash, tuple)).subarray(0, MAC);
+// ADMIN_KEY and the inbox's key_hash together: rotating the inbox's key revokes its links, and
+// reading D1 alone — which holds key_hash — is not enough to mint one.
+async function mac(env: Env, keyHash: string, tuple: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
+  return (await hmacSha256Bytes(`${env.ADMIN_KEY}:${keyHash}`, tuple)).subarray(0, MAC);
 }
 
 export async function mintAttachmentUrl(env: Env, inbox: Inbox, messageId: string, index: number): Promise<string> {
@@ -22,8 +26,9 @@ export async function mintAttachmentUrl(env: Env, inbox: Inbox, messageId: strin
   const view = new DataView(bytes.buffer);
   view.setUint16(32, index);
   view.setUint32(34, Math.floor(Date.now() / 1000) + TTL_SECONDS);
-  bytes.set(await mac(inbox.key_hash, bytes.subarray(0, SIGNED)), SIGNED);
-  return `${env.API_URL}/attachments/${bytes.toBase64({ alphabet: "base64url", omitPadding: true })}`;
+  bytes.set(await mac(env, inbox.key_hash, bytes.subarray(0, SIGNED)), SIGNED);
+  const apiUrl = env.API_URL.replace(/\/$/, "");
+  return `${apiUrl}/attachments/${bytes.toBase64({ alphabet: "base64url", omitPadding: true })}`;
 }
 
 export type Verified = { inbox: Inbox; messageId: string; index: number };
@@ -39,11 +44,9 @@ export async function verifyAttachmentToken(env: Env, token: string): Promise<Ve
     return "invalid";
   }
   if (bytes.length !== SIGNED + MAC) return "invalid";
-  const inbox = await env.DB.prepare("SELECT id, address, name, key_hash, deleted_at FROM inboxes WHERE id = ? AND deleted_at IS NULL")
-    .bind(bytesToUuid(bytes.subarray(0, 16)))
-    .first<Inbox>();
+  const inbox = await findInbox(env, { id: bytesToUuid(bytes.subarray(0, 16)) }, "live");
   if (!inbox) return "invalid";
-  const expected = await mac(inbox.key_hash, bytes.subarray(0, SIGNED));
+  const expected = await mac(env, inbox.key_hash, bytes.subarray(0, SIGNED));
   if (!crypto.subtle.timingSafeEqual(expected, bytes.subarray(SIGNED))) return "invalid";
   const view = new DataView(bytes.buffer);
   if (view.getUint32(34) < Math.floor(Date.now() / 1000)) return "expired";
