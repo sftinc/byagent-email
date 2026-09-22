@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { except } from "hono/combine";
 import { createMiddleware } from "hono/factory";
 import { admin } from "./admin";
+import { verifyAttachmentToken } from "./attachments";
 import { authenticate, bearer, resolveInbox } from "./auth";
 import type { Env, Inbox } from "./env";
 import { type Attachment, loadAttachment } from "./mail";
@@ -44,8 +45,28 @@ app.get("/health", async (c) => {
   return c.json({ ok: true });
 });
 
+// Fetches one attachment by signed link. Authorized by the token alone, so anything holding the
+// link can follow it; see src/attachments.ts for what the token proves and for how long.
+app.get("/attachments/:token", async (c) => {
+  const verified = await verifyAttachmentToken(c.env, c.req.param("token"));
+  if (verified === "invalid") return c.json({ error: "Not found" }, 404);
+  if (verified === "expired") return c.json({ error: "This link has expired. Read the message again for a new link." }, 410);
+  const { inbox, messageId, index } = verified;
+  const row = await findMessage(c.env, inbox.id, messageId);
+  const attachment = row && (JSON.parse(row.attachments) as Attachment[])[index];
+  const file = attachment && (await loadAttachment(c.env, inbox.id, messageId, index));
+  if (!file) return c.json({ error: "This attachment is no longer available. It was purged." }, 410);
+  const asciiSafe = attachment.filename.replace(/["\\\r\n]/g, "").replace(/[^\x00-\x7f]/g, "");
+  return new Response(file.body, {
+    headers: {
+      "Content-Type": attachment.type,
+      "Content-Disposition": `attachment; filename="${asciiSafe}"; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`,
+    },
+  });
+});
+
 app.route("/admin", admin);
-app.use("*", except(["/admin/*", "/health"], inboxAuth));
+app.use("*", except(["/admin/*", "/health", "/attachments/*", "/mcp"], inboxAuth));
 
 app.get("/messages", async (c) =>
   reply(
@@ -63,23 +84,9 @@ app.get("/messages", async (c) =>
   ),
 );
 
-app.get("/messages/:id", async (c) => reply(c, await readMessage(c.env, c.get("inbox"), c.req.param("id"))));
-
-app.get("/messages/:id/attachments/:index", async (c) => {
-  const id = c.req.param("id");
-  const index = Number(c.req.param("index"));
-  const row = await findMessage(c.env, c.get("inbox").id, id);
-  const attachment = row && (JSON.parse(row.attachments) as Attachment[])[index];
-  const file = attachment && (await loadAttachment(c.env, c.get("inbox").id, id, index));
-  if (!file) return c.json({ error: "Attachment not found" }, 404);
-  const asciiSafe = attachment.filename.replace(/["\\\r\n]/g, "").replace(/[^\x00-\x7f]/g, "");
-  return new Response(file.body, {
-    headers: {
-      "Content-Type": attachment.type,
-      "Content-Disposition": `attachment; filename="${asciiSafe}"; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`,
-    },
-  });
-});
+app.get("/messages/:id", async (c) =>
+  reply(c, await readMessage(c.env, c.get("inbox"), c.req.param("id"), c.req.query("mark_read") !== "false")),
+);
 
 app.post("/messages/:id/unread", async (c) => reply(c, await markUnread(c.env, c.get("inbox"), c.req.param("id"))));
 

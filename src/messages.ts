@@ -1,3 +1,4 @@
+import { mintAttachmentUrl } from "./attachments";
 import type { Env, Inbox, Result } from "./env";
 import { type Attachment, loadMessage } from "./mail";
 
@@ -120,7 +121,9 @@ export async function readMessage(env: Env, inbox: Inbox, id: string, markRead =
     data: {
       id,
       ...stored,
-      attachments: stored.attachments.map((a, index) => ({ index, ...a })),
+      attachments: await Promise.all(
+        stored.attachments.map(async (a, index) => ({ index, ...a, url: await mintAttachmentUrl(env, inbox, id, index) })),
+      ),
       direction: row.direction,
       status: row.status,
       status_reason: row.status_reason,

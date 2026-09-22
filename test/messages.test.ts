@@ -141,7 +141,16 @@ describe("messages", () => {
       date: expect.any(String),
       text: "Hi there\n",
       html: null,
-      attachments: [{ index: 0, filename: "notes.txt", type: "text/plain", size: 10, disposition: "attachment" }],
+      attachments: [
+        {
+          index: 0,
+          filename: "notes.txt",
+          type: "text/plain",
+          size: 10,
+          disposition: "attachment",
+          url: expect.stringMatching(/^https:\/\/api\.example\.com\/attachments\/[A-Za-z0-9_-]{72}$/),
+        },
+      ],
       headers: expect.arrayContaining([{ key: "subject", value: "First" }]),
       created_at: expect.any(Number),
       updated_at: expect.any(Number),
@@ -178,16 +187,6 @@ describe("messages", () => {
     expect((await api(`/messages/${id}/restore`, { method: "POST", key: other.api_key })).status).toBe(404);
   });
 
-  it("downloads an attachment", async () => {
-    const { key, id } = await setup();
-    const res = await api(`/messages/${id}/attachments/0`, { key });
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toBe("text/plain");
-    expect(res.headers.get("Content-Disposition")).toBe(`attachment; filename="notes.txt"; filename*=UTF-8''notes.txt`);
-    expect(await res.text()).toBe("file body\n");
-    expect((await api(`/messages/${id}/attachments/5`, { key })).status).toBe(404);
-  });
-
   it("marks read on reading, and can be put back to unread", async () => {
     const { key, id } = await setup();
     const readAt = ((await (await api(`/messages/${id}`, { key })).json()) as any).read_at;
@@ -213,7 +212,7 @@ describe("messages", () => {
     expect(deleted.messages.map((m) => [m.id, typeof m.deleted_at])).toEqual([[id, "number"]]);
     const full = (await (await api(`/messages/${id}`, { key })).json()) as any;
     expect(full).toMatchObject({ id, subject: "First", deleted_at: expect.any(Number) });
-    expect((await api(`/messages/${id}/attachments/0`, { key })).status).toBe(200);
+    expect((await api(new URL(full.attachments[0].url).pathname)).status).toBe(200); // still fetchable while deleted
   });
 
   it("bumps updated_at when a message is marked read", async () => {

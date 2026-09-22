@@ -53,7 +53,8 @@ describe("sent mail", () => {
     const { id } = await sendOne(inbox.api_key);
 
     const res = await api(`/messages/${id}`, { key: inbox.api_key });
-    expect(await res.json()).toEqual({
+    const full = (await res.json()) as any;
+    expect(full).toEqual({
       id,
       direction: "out",
       status: "sent",
@@ -70,7 +71,7 @@ describe("sent mail", () => {
       date: expect.any(String),
       text: "See attached",
       html: null,
-      attachments: [{ index: 0, filename: "a.txt", type: "text/plain", size: 2, disposition: "attachment" }],
+      attachments: [{ index: 0, filename: "a.txt", type: "text/plain", size: 2, disposition: "attachment", url: expect.any(String) }],
       headers: [],
       created_at: expect.any(Number),
       updated_at: expect.any(Number),
@@ -78,7 +79,7 @@ describe("sent mail", () => {
       deleted_at: null,
     });
 
-    const file = await api(`/messages/${id}/attachments/0`, { key: inbox.api_key });
+    const file = await api(new URL(full.attachments[0].url).pathname);
     expect(await file.text()).toBe("hi");
   });
 
