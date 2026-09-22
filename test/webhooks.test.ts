@@ -165,8 +165,11 @@ describe("webhook delivery", () => {
   it("carries a bounced status in the payload", async () => {
     const inbox = await createInbox("agent");
     const hook = (await (await api("/webhooks", { method: "POST", key: inbox.api_key, body: { url: "https://agent.example/hook" } })).json()) as { id: string; secret: string };
-    await receive(eml({ subject: "Bounced", headers: "Return-Path: <>\r\n" }), inbox.address, { WEBHOOKS: { sendBatch: vi.fn() } as any });
+    await receive(eml({ subject: "Bounced" }), inbox.address, { WEBHOOKS: { sendBatch: vi.fn() } as any });
     const row = await env.DB.prepare("SELECT id FROM messages").first<{ id: string }>();
+    await env.DB.prepare("UPDATE messages SET status = 'bounced', status_reason = 'null-return-path' WHERE id = ?")
+      .bind(row!.id)
+      .run();
     const batch = createMessageBatch("agent-inbox-webhooks", [
       { id: "job-1", timestamp: Date.now(), attempts: 1, body: { webhookId: hook.id, messageId: row!.id } },
     ]);
