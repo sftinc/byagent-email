@@ -146,6 +146,8 @@ describe("webhook delivery", () => {
       inbox: inbox.address,
       message: {
         id: messageId,
+        status: "received",
+        status_reason: null,
         message_id: null,
         in_reply_to: null,
         references: [],

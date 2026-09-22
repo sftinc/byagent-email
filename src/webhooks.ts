@@ -8,13 +8,21 @@ import { loadMessage } from "./mail";
 export async function deliverWebhook(job: WebhookJob, env: Env, attempt: number): Promise<boolean> {
   // Skips the job when the webhook or the message has been deleted since it was queued.
   const hook = await env.DB.prepare(
-    `SELECT w.url, w.secret, w.bearer, w.inbox_id, i.address FROM webhooks w
+    `SELECT w.url, w.secret, w.bearer, w.inbox_id, i.address, m.status, m.status_reason FROM webhooks w
      JOIN inboxes i ON i.id = w.inbox_id
      JOIN messages m ON m.id = ? AND m.inbox_id = w.inbox_id AND m.deleted_at IS NULL
      WHERE w.id = ? AND w.deleted_at IS NULL`,
   )
     .bind(job.messageId, job.webhookId)
-    .first<{ url: string; secret: string; bearer: string | null; inbox_id: string; address: string }>();
+    .first<{
+      url: string;
+      secret: string;
+      bearer: string | null;
+      inbox_id: string;
+      address: string;
+      status: string;
+      status_reason: string | null;
+    }>();
   const stored = hook && (await loadMessage(env, hook.inbox_id, job.messageId));
   if (!hook || !stored) {
     console.log({ event: "webhook_skipped", webhookId: job.webhookId, messageId: job.messageId, attempt });
@@ -22,7 +30,13 @@ export async function deliverWebhook(job: WebhookJob, env: Env, attempt: number)
   }
 
   const { html, cc, bcc, headers, attachments, ...rest } = stored;
-  const message = { id: job.messageId, ...rest, attachments: attachments.map((a, index) => ({ index, ...a })) };
+  const message = {
+    id: job.messageId,
+    status: hook.status,
+    status_reason: hook.status_reason,
+    ...rest,
+    attachments: attachments.map((a, index) => ({ index, ...a })),
+  };
   const body = JSON.stringify({ inbox: hook.address, message });
   const timestamp = String(Date.now());
   const signature = await hmacSha256(hook.secret, `${timestamp}.${body}`);

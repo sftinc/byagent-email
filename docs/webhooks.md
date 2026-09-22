@@ -33,13 +33,19 @@ curl -X POST $URL/webhooks/01a0…/restore -H "Authorization: Bearer $API_KEY"
 
 ```json
 { "inbox": "claude@example.com",
-  "message": { "id": "…", "message_id": "<…>", "in_reply_to": null, "references": [],
+  "message": { "id": "…", "status": "received", "status_reason": null,
+               "message_id": "<…>", "in_reply_to": null, "references": [],
                "from": { "name": "Bob", "address": "bob@example.org" }, "reply_to": [],
                "to": [{ "name": "", "address": "claude@example.com" }],
                "subject": "…", "date": "…", "text": "…",
                "attachments": [{ "index": 0, "filename": "a.pdf", "type": "application/pdf",
                                  "size": 1234, "disposition": "attachment" }] } }
 ```
+
+| Field | |
+|---|---|
+| `status` | `"received"` or `"sent"`. In the future, `"bounced"`, `"rejected"`, or `"failed"` when a bounce, rejection, or send failure occurs — how a receiver tells a real message from a delivery failure. |
+| `status_reason` | Why the status is set; `null` unless `status` is one of those future values. |
 
 It leaves out `html`, `cc`, `bcc` and the full header list, to stay small. Fetch
 [`GET /messages/:id`](agent-api.md#read-a-message) for those, and for attachment downloads. Note that
