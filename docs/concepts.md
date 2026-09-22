@@ -17,7 +17,7 @@ All timestamps are Unix milliseconds:
 | Field | |
 |---|---|
 | `created_at` | when a message was received or sent, or an inbox created |
-| `updated_at` | an inbox's last change (rename, key rotation) |
+| `updated_at` | last change to an inbox (rename, key rotation) or a message (e.g. marking it read) |
 | `read_at` | when an agent first read a message; `null` until then |
 | `deleted_at` | when something was deleted; `null` while live |
 

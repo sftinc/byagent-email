@@ -171,4 +171,22 @@ describe("POST /send", () => {
     const stored = await (await env.MAIL.get(`${inbox.id}/${body.id}/message.json`))!.json<any>();
     expect(stored.message_id).toBeNull();
   });
+
+  it("stores the message id and updated_at on a sent message", async () => {
+    const inbox = await createInbox("agent");
+    const send = vi.fn().mockResolvedValue({ messageId: "<m1@email.byagent.io>" });
+    await api("/send", { method: "POST", key: inbox.api_key, body: { to: "bob@example.org", subject: "Hi", text: "Hello" } }, { EMAIL: { send } as any });
+
+    const row = await env.DB.prepare("SELECT message_id, created_at, updated_at FROM messages").first<any>();
+    expect(row.message_id).toBe("<m1@email.byagent.io>");
+    expect(row.updated_at).toBe(row.created_at);
+  });
+
+  it("stores a null message id when the send failed", async () => {
+    const inbox = await createInbox("agent");
+    const send = vi.fn().mockRejectedValue(Object.assign(new Error("down"), { code: "E_X" }));
+    await api("/send", { method: "POST", key: inbox.api_key, body: { to: "bob@example.org", subject: "Hi", text: "Hello" } }, { EMAIL: { send } as any });
+    const row = await env.DB.prepare("SELECT message_id FROM messages").first<any>();
+    expect(row.message_id).toBeNull();
+  });
 });

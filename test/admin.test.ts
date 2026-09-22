@@ -174,10 +174,10 @@ describe("admin", () => {
     // counter, so two back-to-back calls can tie and make "newest first" a coin flip.
     await env.DB.batch([
       env.DB.prepare(
-        "INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at) VALUES ('r1', NULL, 'in', 'rejected', 'unknown_recipient', 'sender@example.org', '', 'nobody@email.example.com', 'One', '[]', 1)",
+        "INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at, updated_at) VALUES ('r1', NULL, 'in', 'rejected', 'unknown_recipient', 'sender@example.org', '', 'nobody@email.example.com', 'One', '[]', 1, 1)",
       ),
       env.DB.prepare(
-        "INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at) VALUES ('r2', NULL, 'in', 'rejected', 'unknown_recipient', 'sender@example.org', '', 'nobody-else@email.example.com', 'Two', '[]', 2)",
+        "INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at, updated_at) VALUES ('r2', NULL, 'in', 'rejected', 'unknown_recipient', 'sender@example.org', '', 'nobody-else@email.example.com', 'Two', '[]', 2, 2)",
       ),
     ]);
 

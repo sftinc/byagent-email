@@ -41,6 +41,7 @@ describe("sent mail", () => {
         subject: "Report",
         attachments: [{ index: 0, filename: "a.txt", type: "text/plain", size: 2, disposition: "attachment" }],
         created_at: expect.any(Number),
+        updated_at: expect.any(Number),
         read_at: expect.any(Number),
         deleted_at: null,
       },
@@ -72,6 +73,7 @@ describe("sent mail", () => {
       attachments: [{ index: 0, filename: "a.txt", type: "text/plain", size: 2, disposition: "attachment" }],
       headers: [],
       created_at: expect.any(Number),
+      updated_at: expect.any(Number),
       read_at: expect.any(Number),
       deleted_at: null,
     });

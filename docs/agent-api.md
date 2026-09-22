@@ -92,7 +92,7 @@ curl "$URL/messages?unread=true" -H "Authorization: Bearer $API_KEY"
       "from": { "name": "Bob", "address": "bob@example.org" },
       "recipients": ["claude@example.com"],
       "subject": "Hello", "attachments": [],
-      "created_at": 1789853699757, "read_at": null, "deleted_at": null }
+      "created_at": 1789853699757, "updated_at": 1789853699757, "read_at": null, "deleted_at": null }
   ],
   "paging": { "before": "01a0…", "after": null } }
 ```
@@ -137,7 +137,7 @@ curl $URL/messages/01a0… -H "Authorization: Bearer $API_KEY"
                     "size": 1234, "disposition": "attachment" }],
   "headers": [{ "key": "subject", "value": "Hello" }],
   "direction": "in", "status": "received", "status_reason": null,
-  "created_at": 1789853699757, "read_at": 1789853712004, "deleted_at": null }
+  "created_at": 1789853699757, "updated_at": 1789853712004, "read_at": 1789853712004, "deleted_at": null }
 ```
 
 | Field | |

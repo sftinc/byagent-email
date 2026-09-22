@@ -159,19 +159,21 @@ export async function saveSent(
 
   await saveMessage(env, inbox.id, id, stored, files);
   await env.DB.prepare(
-    `INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at, read_at)
-     VALUES (?, ?, 'out', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO messages (id, inbox_id, direction, status, status_reason, message_id, from_addr, from_name, recipients, subject, attachments, created_at, updated_at, read_at)
+     VALUES (?, ?, 'out', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
       inbox.id,
       messageId === null ? "failed" : "sent",
       statusReason,
+      messageId,
       inbox.address,
       inbox.name ?? "",
       [...to, ...cc, ...bcc].map(addressOf).join(",").toLowerCase(),
       message.subject,
       JSON.stringify(stored.attachments),
+      now,
       now,
       now, // sent mail counts as read
     )

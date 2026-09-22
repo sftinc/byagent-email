@@ -115,4 +115,18 @@ describe("incoming mail", () => {
     await receive(eml({ headers: "Return-Path: <>\r\nAuto-Submitted: auto-generated\r\n" }), "agent@email.example.com");
     expect(await bounceStatus()).toEqual({ status: "bounced", status_reason: "null-return-path" });
   });
+
+  it("stores the message id of received mail", async () => {
+    await createInbox("agent");
+    await receive(eml({ headers: "Message-ID: <in1@example.org>\r\n" }), "agent@email.example.com");
+    const row = await env.DB.prepare("SELECT message_id, created_at, updated_at FROM messages").first<any>();
+    expect(row.message_id).toBe("<in1@example.org>");
+    expect(row.updated_at).toBe(row.created_at);
+  });
+
+  it("stores a rejected row with a null message id", async () => {
+    await receive(eml(), "nobody@email.example.com");
+    const row = await env.DB.prepare("SELECT message_id FROM messages").first<any>();
+    expect(row.message_id).toBeNull();
+  });
 });

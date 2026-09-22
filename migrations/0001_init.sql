@@ -37,6 +37,7 @@ CREATE TABLE messages (
   direction     TEXT NOT NULL,     -- 'in' (received) or 'out' (sent)
   status        TEXT NOT NULL,     -- 'received' | 'bounced' | 'rejected' (in); 'sent' | 'failed' (out)
   status_reason TEXT,              -- why the status is what it is; null when there's nothing to explain
+  message_id    TEXT,              -- the RFC 5322 Message-ID; how a delivery event finds its message
   from_addr     TEXT NOT NULL,
   from_name     TEXT NOT NULL,     -- '' when the sender has no display name
   recipients    TEXT NOT NULL,     -- to, cc and (for sent mail) bcc, comma-separated
@@ -45,6 +46,7 @@ CREATE TABLE messages (
   attachments TEXT NOT NULL,       -- [{filename, type, size, disposition}], '[]' when there are none
   -- dates
   created_at  INTEGER NOT NULL,    -- received or sent
+  updated_at  INTEGER NOT NULL,    -- set on create, and whenever the row changes (e.g. a delivery event)
   read_at     INTEGER,             -- null until the agent marks it read
   deleted_at  INTEGER
 );
@@ -53,4 +55,5 @@ CREATE TABLE messages (
 CREATE UNIQUE INDEX inboxes_address ON inboxes(address);
 CREATE UNIQUE INDEX inboxes_key_hash ON inboxes(key_hash);
 CREATE INDEX messages_inbox_id ON messages(inbox_id, id);  -- lists and pages by id
+CREATE INDEX messages_message_id ON messages(message_id);
 CREATE INDEX webhooks_inbox ON webhooks(inbox_id);

@@ -31,6 +31,7 @@ describe("messages", () => {
           subject: "First",
           attachments: [{ index: 0, filename: "notes.txt", type: "text/plain", size: 10, disposition: "attachment" }],
           created_at: expect.any(Number),
+          updated_at: expect.any(Number),
           read_at: null,
           deleted_at: null,
         },
@@ -143,6 +144,7 @@ describe("messages", () => {
       attachments: [{ index: 0, filename: "notes.txt", type: "text/plain", size: 10, disposition: "attachment" }],
       headers: expect.arrayContaining([{ key: "subject", value: "First" }]),
       created_at: expect.any(Number),
+      updated_at: expect.any(Number),
       read_at: expect.any(Number), // reading marks it read
       deleted_at: null,
     });
@@ -212,5 +214,16 @@ describe("messages", () => {
     const full = (await (await api(`/messages/${id}`, { key })).json()) as any;
     expect(full).toMatchObject({ id, subject: "First", deleted_at: expect.any(Number) });
     expect((await api(`/messages/${id}/attachments/0`, { key })).status).toBe(200);
+  });
+
+  it("bumps updated_at when a message is marked read", async () => {
+    const inbox = await createInbox("agent");
+    await receive(eml(), inbox.address);
+    const before = await env.DB.prepare("SELECT id, updated_at FROM messages").first<any>();
+    await env.DB.prepare("UPDATE messages SET updated_at = 1 WHERE id = ?").bind(before.id).run();
+
+    await api(`/messages/${before.id}`, { key: inbox.api_key });
+    const after = await env.DB.prepare("SELECT updated_at FROM messages").first<any>();
+    expect(after.updated_at).toBeGreaterThan(1);
   });
 });

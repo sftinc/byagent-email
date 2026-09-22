@@ -73,7 +73,7 @@ app.get("/messages", async (c) => {
   // Fetch one extra row to learn whether there's more in the direction we're paging.
   const cursor = after ? " AND id > ? ORDER BY id ASC" : before ? " AND id < ? ORDER BY id DESC" : " ORDER BY id DESC";
   const { results } = await c.env.DB.prepare(
-    `SELECT id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at, read_at, deleted_at
+    `SELECT id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at, updated_at, read_at, deleted_at
      FROM messages WHERE ${where}${cursor} LIMIT 21`,
   )
     .bind(...params, ...(after || before ? [after || before] : []))
@@ -113,7 +113,7 @@ app.get("/messages", async (c) => {
 function findMessage(env: Env, inboxId: string, id: string) {
   // Deleted messages are still readable by id; only changing them 404s.
   return env.DB.prepare(
-    "SELECT direction, status, status_reason, attachments, created_at, read_at, deleted_at FROM messages WHERE id = ? AND inbox_id = ?",
+    "SELECT direction, status, status_reason, attachments, created_at, updated_at, read_at, deleted_at FROM messages WHERE id = ? AND inbox_id = ?",
   )
     .bind(id, inboxId)
     .first<{
@@ -122,6 +122,7 @@ function findMessage(env: Env, inboxId: string, id: string) {
       status_reason: string | null;
       attachments: string;
       created_at: number;
+      updated_at: number;
       read_at: number | null;
       deleted_at: number | null;
     }>();
@@ -137,7 +138,7 @@ app.get("/messages/:id", async (c) => {
   let readAt = row.read_at;
   if (readAt === null && row.deleted_at === null) {
     readAt = Date.now();
-    await c.env.DB.prepare("UPDATE messages SET read_at = ? WHERE id = ?").bind(readAt, id).run();
+    await c.env.DB.prepare("UPDATE messages SET read_at = ?, updated_at = ? WHERE id = ?").bind(readAt, readAt, id).run();
   }
   return c.json({
     id,
@@ -147,6 +148,7 @@ app.get("/messages/:id", async (c) => {
     status: row.status,
     status_reason: row.status_reason,
     created_at: row.created_at,
+    updated_at: row.updated_at,
     read_at: readAt,
     deleted_at: row.deleted_at,
   });
@@ -179,10 +181,11 @@ app.post("/messages/:id/unread", async (c) => {
 });
 
 app.delete("/messages/:id", async (c) => {
+  const now = Date.now();
   const { meta } = await c.env.DB.prepare(
-    "UPDATE messages SET deleted_at = ? WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL",
+    "UPDATE messages SET deleted_at = ?, updated_at = ? WHERE id = ? AND inbox_id = ? AND deleted_at IS NULL",
   )
-    .bind(Date.now(), c.req.param("id"), c.get("inbox").id)
+    .bind(now, now, c.req.param("id"), c.get("inbox").id)
     .run();
   if (meta.changes === 0) return c.json({ error: "Message not found" }, 404);
   return c.json({ ok: true });
@@ -190,9 +193,9 @@ app.delete("/messages/:id", async (c) => {
 
 app.post("/messages/:id/restore", async (c) => {
   const { meta } = await c.env.DB.prepare(
-    "UPDATE messages SET deleted_at = NULL WHERE id = ? AND inbox_id = ? AND deleted_at IS NOT NULL",
+    "UPDATE messages SET deleted_at = NULL, updated_at = ? WHERE id = ? AND inbox_id = ? AND deleted_at IS NOT NULL",
   )
-    .bind(c.req.param("id"), c.get("inbox").id)
+    .bind(Date.now(), c.req.param("id"), c.get("inbox").id)
     .run();
   if (meta.changes === 0) return c.json({ error: "Message not found" }, 404);
   return c.json({ ok: true });
