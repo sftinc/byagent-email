@@ -360,6 +360,24 @@ describe("tools match their REST routes", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const r = await call("read_message", { inbox: inbox.address, id }, ADMIN_KEY);
     expect(r.structuredContent.read_at).toEqual(expect.any(Number));
-    expect(log).toHaveBeenCalledWith({ event: "admin_access", tool: "read_message", inbox: inbox.address, messageId: id });
+    expect(log).toHaveBeenCalledWith({ event: "admin_access", tool: "read_message", inbox: inbox.address, id });
+  });
+
+  it("no response carries key_hash", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const inbox = await createInbox("agent");
+    await receive(eml(), inbox.address);
+    const { id } = (await env.DB.prepare("SELECT id FROM messages").first<{ id: string }>())!;
+
+    const read = await call("read_message", { inbox: inbox.address, id }, ADMIN_KEY);
+    const list = await call("list_inboxes", {}, ADMIN_KEY);
+    const renamed = await call("rename_inbox", { inbox: inbox.address, name: "Renamed" }, ADMIN_KEY);
+    await call("delete_inbox", { inbox: inbox.address }, ADMIN_KEY);
+    const restored = await call("restore_inbox", { inbox: inbox.address }, ADMIN_KEY);
+    const rest = await (await api(`/messages/${id}`, { key: inbox.api_key })).json();
+
+    for (const body of [read.structuredContent, list.structuredContent, renamed.structuredContent, restored.structuredContent, rest]) {
+      expect(JSON.stringify(body)).not.toContain("key_hash");
+    }
   });
 });

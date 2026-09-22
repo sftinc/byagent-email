@@ -165,8 +165,10 @@ async function callTool(c: Ctx, id: unknown, params: Record<string, any>) {
     const resolved = await resolveInbox(c.env, principal, typeof args.inbox === "string" ? args.inbox : undefined, tool.policy);
     if (!resolved.ok) return rpcResult(c, id, toolError(resolved.status, `${tool.name}: ${resolved.error}`));
     inbox = resolved.data;
-    if (principal.kind === "admin") {
-      console.log({ event: "admin_access", tool: tool.name, inbox: inbox.address, ...(typeof args.id === "string" && { messageId: args.id }) });
+    // Only for inbox tools: the admin tools' own actions write rows, and a log line here would
+    // only duplicate them with shorter retention.
+    if (principal.kind === "admin" && !tool.admin) {
+      console.log({ event: "admin_access", tool: tool.name, inbox: inbox.address, ...(typeof args.id === "string" && { id: args.id }) });
     }
   }
   try {
