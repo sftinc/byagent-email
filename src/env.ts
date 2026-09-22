@@ -18,6 +18,21 @@ export interface WebhookJob {
   messageId: string;
 }
 
+// What Cloudflare Email Service publishes to the delivery-events queue. Only the fields we read.
+export interface DeliveryEvent {
+  type: string;
+  source: { domain: string };
+  metadata: { eventTimestamp: string };
+  payload: {
+    eventId: string;
+    messageId: string;
+    recipient: string;
+    terminal: boolean;
+    delivery: { status: string; smtpEnhancedStatusCode?: string };
+    bounce?: { type: string; classification?: string; reason?: string };
+  };
+}
+
 // The Workers runtime has these, but TypeScript's lib doesn't declare them yet.
 declare global {
   interface Uint8Array { toBase64(): string }
