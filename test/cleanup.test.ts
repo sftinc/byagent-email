@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleScheduled } from "../src/cleanup";
 import { reset } from "./helpers";
 
@@ -73,8 +73,10 @@ describe("cleanup", () => {
   it("deletes no R2 keys for rejected rows", async () => {
     await addMessage("keep", Date.now());
     await addRejected("old", Date.now() - 31 * DAY);
+    const deleteSpy = vi.spyOn(env.MAIL, "delete");
     await handleScheduled({ ...env, RETENTION_DAYS: "0" });
 
+    expect(deleteSpy).not.toHaveBeenCalled();
     expect((await env.MAIL.list()).objects.map((o) => o.key)).toEqual(["i1/keep/message.json"]);
   });
 
