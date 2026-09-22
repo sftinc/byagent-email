@@ -10,6 +10,14 @@ const STATUS: Record<string, string> = {
   "cf.email.sending.message.failed": "failed",
 };
 
+// A send writes R2 and every attachment before its D1 insert, so an event can beat its own row
+// into existence. Retry briefly rather than dropping a real bounce; past this, a missing row means
+// mail sent before this shipped, or from another system.
+const GRACE_MS = 5 * 60_000;
+
+// Queue order is not guaranteed, so a delayed `deferred` must not undo a `delivered`.
+const TERMINAL = new Set(["delivered", "bounced", "complained", "rejected", "failed"]);
+
 // The enhanced SMTP code (5.1.1) says why in a form worth storing; `bounce.reason` is hundreds of
 // characters of the remote server's folded prose. A soft bounce is retry exhaustion rather than a
 // dead address, and the prefix keeps that distinction without a second column.
@@ -32,11 +40,26 @@ export async function handleDeliveryEvent(batch: MessageBatch<DeliveryEvent>, en
       // message whether or not someone has since hidden it, and recording it keeps a restored
       // message truthful. Nothing reaches the user about a deleted message — `deliverWebhook`
       // already filters on `deleted_at IS NULL` (src/webhooks.ts:13).
-      await env.DB.prepare(
-        "UPDATE messages SET status = ?, status_reason = ?, updated_at = ? WHERE message_id = ? AND direction = 'out'",
-      )
-        .bind(status, reasonFor(msg.body, status), Date.now(), msg.body.payload.messageId)
-        .run();
+      const row = await env.DB.prepare("SELECT status FROM messages WHERE message_id = ? AND direction = 'out'")
+        .bind(msg.body.payload.messageId)
+        .first<{ status: string }>();
+
+      if (!row) {
+        if (Date.now() - msg.timestamp.getTime() < GRACE_MS) {
+          msg.retry();
+          continue;
+        }
+        msg.ack();
+        continue;
+      }
+
+      if (!(TERMINAL.has(row.status) && !TERMINAL.has(status))) {
+        await env.DB.prepare(
+          "UPDATE messages SET status = ?, status_reason = ?, updated_at = ? WHERE message_id = ? AND direction = 'out'",
+        )
+          .bind(status, reasonFor(msg.body, status), Date.now(), msg.body.payload.messageId)
+          .run();
+      }
     }
     msg.ack();
   }

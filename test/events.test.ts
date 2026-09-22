@@ -1,6 +1,6 @@
 import { createExecutionContext, createMessageBatch, getQueueResult } from "cloudflare:test";
 import { env } from "cloudflare:workers";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeliveryEvent } from "../src/env";
 import { handleDeliveryEvent } from "../src/events";
 import { reset } from "./helpers";
@@ -133,6 +133,52 @@ describe("delivery events", () => {
     await sentMessage("<m@x>");
     await run(bounceEvent("<m@x>"));
     expect((await status()).updated_at).toBeGreaterThan(1);
+  });
+
+  it("retries an unmatched event that is younger than five minutes", async () => {
+    const batch = createMessageBatch("agent-inbox-email-events", [
+      { id: "ev-1", timestamp: new Date(Date.now() - 60_000), attempts: 1, body: bounceEvent("<absent@x>") },
+    ]);
+    const retry = vi.fn();
+    (batch.messages[0] as any).retry = retry;
+    await handleDeliveryEvent(batch as any, env);
+    expect(retry).toHaveBeenCalled();
+  });
+
+  it("acks an unmatched event older than five minutes", async () => {
+    const batch = createMessageBatch("agent-inbox-email-events", [
+      { id: "ev-1", timestamp: new Date(Date.now() - 10 * 60_000), attempts: 1, body: bounceEvent("<absent@x>") },
+    ]);
+    const retry = vi.fn();
+    (batch.messages[0] as any).retry = retry;
+    const ctx = createExecutionContext();
+    await handleDeliveryEvent(batch as any, env);
+    expect((await getQueueResult(batch, ctx)).explicitAcks).toEqual(["ev-1"]);
+    expect(retry).not.toHaveBeenCalled();
+  });
+
+  it("does not let a late deferred overwrite a delivered", async () => {
+    await sentMessage("<m@x>");
+    const delivered = bounceEvent("<m@x>");
+    delivered.type = "cf.email.sending.message.delivered";
+    delivered.payload.delivery = { status: "delivered", provider: "cloudflare" } as any;
+    await run(delivered);
+
+    const deferred = bounceEvent("<m@x>");
+    deferred.type = "cf.email.sending.message.deferred";
+    deferred.payload.terminal = false;
+    await run(deferred);
+
+    expect((await status()).status).toBe("delivered");
+  });
+
+  it("lets one terminal state replace another", async () => {
+    await sentMessage("<m@x>");
+    await run(bounceEvent("<m@x>"));
+    const complained = bounceEvent("<m@x>");
+    complained.type = "cf.email.sending.message.complained";
+    await run(complained);
+    expect((await status()).status).toBe("complained");
   });
 
   it("ignores an event for an inbound message", async () => {
