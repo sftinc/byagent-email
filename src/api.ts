@@ -62,6 +62,9 @@ app.get("/attachments/:token", async (c) => {
     headers: {
       "Content-Type": attachment.type,
       "Content-Disposition": `attachment; filename="${asciiSafe}"; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`,
+      // The sender chooses Content-Type, and the bytes are served without a key.
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "sandbox",
     },
   });
 });
