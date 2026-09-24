@@ -96,14 +96,16 @@ curl -X POST $URL/messages/01a0…/reply -H "Authorization: Bearer $API_KEY" -d 
   original `to`.
 - **`cc`** (reply-all only): everyone else it went to — its `to` and `cc` for received mail, its
   `cc` for sent mail. Never its `bcc`.
-- **`subject`**: `Re: ` and the original's, unless that already starts with `Re:`. A `subject` in
-  the body is ignored.
+- **`subject`**: `Re: ` and the original's, unless that already starts with `Re:`, in any case. A
+  `subject` in the body is ignored.
 - **the original**: below your text, after `On <date>, <sender> wrote:`, in both the text and html
   parts. Attachments aren't copied.
 
 This inbox's own address and repeated addresses are dropped. The body takes the `/send` fields:
 `text` or `html` (required, not blank), `attachments`, `bcc`, and `to` / `cc`, which replace the
 defaults (`"cc": []` for none). Answers as `/send` does, plus 404 for a message not in this inbox.
+A very large original can push a reply over the 5 MiB limit (413); use `/send` with `reply_to_id`
+then.
 
 ## List messages
 

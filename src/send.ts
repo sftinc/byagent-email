@@ -140,10 +140,14 @@ export async function sendMail(env: Env, inbox: Inbox, body: any): Promise<Resul
 
 // Where a reply goes by default. Received mail: its Reply-To, else its sender; reply-all adds
 // everyone it was sent to. Mail this inbox sent: its original recipients, never its bcc.
+// Postal-mime can produce a contact with no address (e.g. "Cc: Bob"), which sendMail would refuse,
+// so those are dropped here rather than inherited.
 function defaults(direction: string, parent: StoredMessage, all: boolean): { to: Contact[]; cc: Contact[] } {
-  if (direction === "out") return { to: parent.to, cc: all ? parent.cc : [] };
-  const to = parent.reply_to.length ? parent.reply_to : parent.from ? [parent.from] : [];
-  return { to, cc: all ? [...parent.to, ...parent.cc] : [] };
+  const has = (c: Contact) => c.address !== "";
+  if (direction === "out") return { to: parent.to.filter(has), cc: all ? parent.cc.filter(has) : [] };
+  const replyTo = parent.reply_to.filter(has);
+  const to = replyTo.length ? replyTo : parent.from && has(parent.from) ? [parent.from] : [];
+  return { to, cc: all ? [...parent.to, ...parent.cc].filter(has) : [] };
 }
 
 // An inherited contact as a recipient. Received names are stored unchecked, so a name sendMail
@@ -167,8 +171,11 @@ function cleanUp(inbox: Inbox, to: unknown[], cc: unknown[]): [unknown[], unknow
   return [to.filter(keep), cc.filter(keep)];
 }
 
+// Postal-mime decodes an encoded-word subject as-is, so a header injected into it (e.g. \r\nBcc:)
+// would land in the outgoing Subject verbatim. Collapse control characters first.
 function replySubject(subject: string): string {
-  return /^\s*re:/i.test(subject) ? subject : `Re: ${subject}`.trimEnd();
+  const clean = subject.replace(/[\x00-\x1f\x7f]+/g, " ");
+  return /^\s*re:/i.test(clean) ? clean : `Re: ${clean}`.trimEnd();
 }
 
 // "On <date>, <name> <address> wrote:", dated when the original was sent, else when it arrived.
@@ -201,7 +208,7 @@ export async function replyMail(env: Env, inbox: Inbox, id: string, body: any, a
   if (filled(text) || filled(html)) {
     const header = quoteHeader(parent, row.created_at);
     const mine = { text: filled(text) ? text : toText(html), html: filled(html) ? html : toHtml(text) };
-    const theirs = { text: filled(parent.text) ? parent.text : toText(parent.html ?? ""), html: parent.html ?? toHtml(parent.text) };
+    const theirs = { text: filled(parent.text) ? parent.text : toText(parent.html ?? ""), html: filled(parent.html) ? parent.html : toHtml(parent.text) };
     text = `${mine.text}\n\n${header}\n\n${theirs.text}`;
     html = `${mine.html}<br><br><div>${escapeHtml(header)}</div><br>${theirs.html}`;
   }

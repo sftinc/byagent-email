@@ -72,6 +72,17 @@ should return 0:
 SELECT count(*) FROM messages WHERE recipients <> '[]' AND recipients NOT LIKE '[{"name":%';
 ```
 
+If it isn't 0, mail arrived between the `UPDATE` and the deploy. Run the same `UPDATE` again, restricted
+to the rows the check above found (safe to repeat, since it only touches old-format rows):
+
+```sql
+UPDATE messages SET recipients = (
+  SELECT json_group_array(json_object('name', '', 'address', value))
+  FROM json_each(CASE WHEN recipients = '' THEN '[]'
+                      ELSE '[' || replace(json_quote(recipients), ',', '","') || ']' END)
+) WHERE recipients <> '[]' AND recipients NOT LIKE '[{"name":%';
+```
+
 ## Each email domain
 
 In the Cloudflare dashboard:

@@ -60,6 +60,13 @@ describe("reply", () => {
     }
   });
 
+  it("collapses control characters an encoded subject decodes to, before adding Re:", async () => {
+    const { key, id } = await received(mail({ subject: "=?utf-8?Q?Hi=0D=0ABcc=3A_victim=40x.org?=" }));
+    const b = binding();
+    await post(key, `/messages/${id}/reply`, { text: "x" }, b.EMAIL);
+    expect(b.last().subject).toBe("Re: Hi Bcc: victim@x.org");
+  });
+
   it("includes an html-only original in both parts", async () => {
     const raw = mail({ text: "<p>Hi <b>Bob</b></p>" }).replace("Content-Type: text/plain", "Content-Type: text/html");
     const { key, id } = await received(raw);
@@ -67,6 +74,19 @@ describe("reply", () => {
     await post(key, `/messages/${id}/reply`, { html: "<p>Sure</p>" }, b.EMAIL);
     expect(b.last().text).toMatch(/^Sure\n\nOn .* wrote:\n\n.*Hi (\*\*)?Bob/s);
     expect(b.last().html).toMatch(/^<p>Sure<\/p><br><br><div>On .* wrote:<\/div><br>.*<b>Bob<\/b>/s);
+  });
+
+  it("quotes a blank html part as generated from the text, not as blank html", async () => {
+    const raw =
+      "From: Sender <sender@example.org>\r\nTo: agent@email.example.com\r\nSubject: Hello\r\n" +
+      "Date: Sat, 19 Sep 2026 10:00:00 +0000\r\nMessage-ID: <first@x.com>\r\nMIME-Version: 1.0\r\n" +
+      "Content-Type: multipart/alternative; boundary=BOUNDARY\r\n\r\n" +
+      "--BOUNDARY\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHi there\r\n" +
+      "--BOUNDARY\r\nContent-Type: text/html; charset=utf-8\r\n\r\n \r\n--BOUNDARY--\r\n";
+    const { key, id } = await received(raw);
+    const b = binding();
+    await post(key, `/messages/${id}/reply`, { text: "Thanks" }, b.EMAIL);
+    expect(b.last().html).toMatch(/Hi there/);
   });
 
   it("reply-all copies the other recipients once, never this inbox or the sender again", async () => {
@@ -82,6 +102,14 @@ describe("reply", () => {
       { email: "carol@example.org", name: "Carol" },
       { email: "dan@example.org", name: "Dan" },
     ]);
+  });
+
+  it("drops an inherited cc with no address, reply-all still works", async () => {
+    const { key, id } = await received(mail({ headers: "Cc: Bob, Dan <dan@example.org>\r\n" }));
+    const b = binding();
+    const res = await post(key, `/messages/${id}/reply-all`, { text: "x" }, b.EMAIL);
+    expect(res.status).toBe(200);
+    expect(b.last().cc).toEqual([{ email: "dan@example.org", name: "Dan" }]);
   });
 
   it("to mail the inbox sent, goes to its original recipients, never its bcc", async () => {
@@ -119,6 +147,15 @@ describe("reply", () => {
 
     const res = await post(key, `/messages/${id}/reply`, { to: { address: "x@x.com", name: long }, text: "x" }, b.EMAIL);
     expect(res.status).toBe(400);
+  });
+
+  it("inherits a from name with a control character as the plain address", async () => {
+    const { key, id } = await received(
+      mail().replace("From: Sender <sender@example.org>", "From: =?utf-8?Q?Evil=0D=0ABcc=3A_x=40x.org?= <sender@example.org>"),
+    );
+    const b = binding();
+    expect((await post(key, `/messages/${id}/reply`, { text: "x" }, b.EMAIL)).status).toBe(200);
+    expect(b.last().to).toEqual(["sender@example.org"]);
   });
 
   it("refuses a reply with no text or html, even with an empty body", async () => {
