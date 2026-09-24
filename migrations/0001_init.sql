@@ -41,7 +41,7 @@ CREATE TABLE messages (
   message_id    TEXT,              -- the RFC 5322 Message-ID; how a delivery event finds its message
   from_addr     TEXT NOT NULL,
   from_name     TEXT NOT NULL,     -- '' when the sender has no display name
-  recipients    TEXT NOT NULL,     -- to, cc and (for sent mail) bcc, comma-separated
+  recipients    TEXT NOT NULL,     -- to, cc and (for sent mail) bcc: [{name, address}], name '' when none
   -- content
   subject     TEXT,
   attachments TEXT NOT NULL,       -- [{filename, type, size, disposition}], '[]' when there are none

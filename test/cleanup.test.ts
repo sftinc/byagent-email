@@ -11,7 +11,7 @@ const DAY = 86_400_000;
 async function addMessage(id: string, createdAt: number, attachments = "[]") {
   await env.DB.prepare("INSERT OR IGNORE INTO inboxes (id, address, key_hash, created_at, updated_at) VALUES ('i1', 'a@x.com', 'h', 0, 0)").run();
   await env.DB.prepare(
-    "INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, created_at, updated_at) VALUES (?, 'i1', 'in', 'received', 's@x.com', '', '', 'x', ?, ?, ?)",
+    "INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, created_at, updated_at) VALUES (?, 'i1', 'in', 'received', 's@x.com', '', '[]', 'x', ?, ?, ?)",
   )
     .bind(id, attachments, createdAt, createdAt)
     .run();
@@ -21,7 +21,7 @@ async function addMessage(id: string, createdAt: number, attachments = "[]") {
 
 async function addRejected(id: string, createdAt: number) {
   await env.DB.prepare(
-    "INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at, updated_at) VALUES (?, NULL, 'in', 'rejected', 'unknown_recipient', 's@x.com', '', 'nobody@x.com', 'x', '[]', ?, ?)",
+    "INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at, updated_at) VALUES (?, NULL, 'in', 'rejected', 'unknown_recipient', 's@x.com', '', '[{\"name\":\"\",\"address\":\"nobody@x.com\"}]', 'x', '[]', ?, ?)",
   )
     .bind(id, createdAt, createdAt)
     .run();

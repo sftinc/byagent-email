@@ -113,7 +113,7 @@ stored files go with it.
 
 ```bash
 curl $URL/admin/rejected -H "Authorization: Bearer $ADMIN_KEY"
-# → {"rejected":[{"id":"01a0…","from_addr":"sender@example.org","recipients":"nobody@example.com","subject":"Hi","status_reason":"unknown_recipient","created_at":1789…}]}
+# → {"rejected":[{"id":"01a0…","from_addr":"sender@example.org","recipients":[{"name":"","address":"nobody@example.com"}],"subject":"Hi","status_reason":"unknown_recipient","created_at":1789…}]}
 ```
 
 No agent can see this mail — it belongs to no inbox — so this is the only way to read it. See

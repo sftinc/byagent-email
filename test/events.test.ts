@@ -30,7 +30,7 @@ async function sentMessage(messageId: string) {
   await env.DB.prepare("INSERT INTO inboxes (id, address, key_hash, created_at, updated_at) VALUES ('i1','a@x.com','h',0,0)").run();
   await env.DB.prepare(
     `INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, message_id, created_at, updated_at)
-     VALUES ('m1','i1','out','sent','a@x.com','','b@x.com','s','[]',?,1,1)`,
+     VALUES ('m1','i1','out','sent','a@x.com','','[{"name":"","address":"b@x.com"}]','s','[]',?,1,1)`,
   ).bind(messageId).run();
 }
 
@@ -186,7 +186,7 @@ describe("delivery events", () => {
     await env.DB.prepare("INSERT INTO inboxes (id, address, key_hash, created_at, updated_at) VALUES ('i1','a@x.com','h',0,0)").run();
     await env.DB.prepare(
       `INSERT INTO messages (id, inbox_id, direction, status, from_addr, from_name, recipients, subject, attachments, message_id, created_at, updated_at)
-       VALUES ('m1','i1','in','received','a@x.com','','b@x.com','s','[]','<m@x>',1,1)`,
+       VALUES ('m1','i1','in','received','a@x.com','','[{"name":"","address":"b@x.com"}]','s','[]','<m@x>',1,1)`,
     ).run();
     const batch = createMessageBatch("agent-inbox-email-events", [
       { id: "ev-1", timestamp: new Date(), attempts: 1, body: bounceEvent("<m@x>") },

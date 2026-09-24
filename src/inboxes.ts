@@ -60,8 +60,8 @@ export async function listRejected(env: Env) {
   const { results } = await env.DB.prepare(
     `SELECT id, from_addr, recipients, subject, status_reason, created_at FROM messages
      WHERE inbox_id IS NULL ORDER BY id DESC LIMIT 100`,
-  ).all();
-  return { ok: true, data: { rejected: results } } as const;
+  ).all<{ recipients: string }>();
+  return { ok: true, data: { rejected: results.map((r) => ({ ...r, recipients: JSON.parse(r.recipients) })) } } as const;
 }
 
 const HINT = "Queues > agent-inbox-email-events > Subscriptions > Subscribe to events (source \"Email Sending\", this domain)";

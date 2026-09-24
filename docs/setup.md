@@ -47,6 +47,31 @@ predates delivery events won't get the
 nothing in that file but `API_DOMAIN` — so add the `queues.consumers` entry from `wrangler.example.jsonc`
 to it by hand.
 
+**Recipient names:** from this release the `recipients` column holds JSON,
+`[{"name":"…","address":"…"}]`, instead of comma-separated addresses. A schema diff won't show
+that, so convert existing rows by hand, once, right before deploying. Back up first:
+
+```bash
+npx wrangler d1 export <name> --remote --output backup.sql
+```
+
+Save this as `convert.sql` and run `npx wrangler d1 execute <name> --remote --file convert.sql`:
+
+```sql
+UPDATE messages SET recipients = (
+  SELECT json_group_array(json_object('name', '', 'address', value))
+  FROM json_each(CASE WHEN recipients = '' THEN '[]'
+                      ELSE '[' || replace(json_quote(recipients), ',', '","') || ']' END)
+);
+```
+
+Run it only once: a second run would treat converted rows as old ones. After deploying, this
+should return 0:
+
+```sql
+SELECT count(*) FROM messages WHERE recipients <> '[]' AND recipients NOT LIKE '[{"name":%';
+```
+
 ## Each email domain
 
 In the Cloudflare dashboard:

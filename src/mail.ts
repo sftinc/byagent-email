@@ -44,8 +44,9 @@ function contacts(list: Address[] = []): Contact[] {
   return list.flatMap((a) => (a.group ? a.group : [a])).map((a) => ({ name: a.name, address: a.address ?? "" }));
 }
 
-export function addresses(list: Address[] = []): string[] {
-  return contacts(list).map((c) => c.address);
+// The D1 `recipients` column: every recipient as {name, address}, addresses lower-cased.
+export function recipientsJson(list: Contact[]): string {
+  return JSON.stringify(list.map((c) => ({ name: c.name, address: c.address.toLowerCase() })));
 }
 
 // Turns a parsed email into what we store: the message, and the attachment bytes.
@@ -102,10 +103,6 @@ export function loadAttachment(env: Env, inboxId: string, id: string, index: num
   return env.MAIL.get(messageKey(inboxId, id, String(index)));
 }
 
-export function addressOf(recipient: string | EmailAddress): string {
-  return typeof recipient === "string" ? recipient : recipient.email;
-}
-
 // Sent mail is stored the same way, built from what was sent rather than from a parsed email.
 // A null `messageId` means the send binding threw, so the row records the attempt as failed.
 export async function saveSent(
@@ -158,7 +155,7 @@ export async function saveSent(
       messageId,
       inbox.address,
       inbox.name ?? "",
-      [...to, ...cc, ...bcc].map(addressOf).join(",").toLowerCase(),
+      recipientsJson([...stored.to, ...stored.cc, ...stored.bcc]),
       message.subject,
       JSON.stringify(stored.attachments),
       now,

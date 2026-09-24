@@ -27,7 +27,7 @@ describe("messages", () => {
           status: "received",
           status_reason: null,
           from: { name: "Sender", address: "sender@example.org" },
-          recipients: ["agent@email.example.com"],
+          recipients: [{ name: "", address: "agent@email.example.com" }],
           subject: "First",
           attachments: [{ index: 0, filename: "notes.txt", type: "text/plain", size: 10, disposition: "attachment" }],
           created_at: expect.any(Number),
@@ -42,6 +42,20 @@ describe("messages", () => {
     await api(`/messages/${id}`, { key }); // reading marks it read
     const unread = (await (await api("/messages?unread=true", { key })).json()) as { messages: any[] };
     expect(unread.messages).toEqual([]);
+  });
+
+  it("filters by a recipient's or the sender's name, never by the JSON around them", async () => {
+    const inbox = await createInbox("agent");
+    await receive(eml({ from: "bob@example.org", headers: 'Cc: "Smith, Carol" <carol@example.org>\r\n' }), inbox.address);
+    const count = async (query: string) =>
+      ((await (await api(`/messages?${query}`, { key: inbox.api_key })).json()) as { messages: unknown[] }).messages.length;
+
+    expect(await count("to=smith")).toBe(1);
+    expect(await count("to=CAROL@")).toBe(1);
+    expect(await count("from=sender")).toBe(1); // eml() names every sender "Sender"; the address is bob@
+    for (const query of ["to=name", "to=address", "to=%22", "to=%7B", "to=%25", "to=_", "from=nobody"]) {
+      expect(await count(query)).toBe(0);
+    }
   });
 
   it("returns status on the list and on a single message", async () => {

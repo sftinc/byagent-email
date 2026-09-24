@@ -174,10 +174,10 @@ describe("admin", () => {
     // counter, so two back-to-back calls can tie and make "newest first" a coin flip.
     await env.DB.batch([
       env.DB.prepare(
-        "INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at, updated_at) VALUES ('r1', NULL, 'in', 'rejected', 'unknown_recipient', 'sender@example.org', '', 'nobody@email.example.com', 'One', '[]', 1, 1)",
+        "INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at, updated_at) VALUES ('r1', NULL, 'in', 'rejected', 'unknown_recipient', 'sender@example.org', '', '[{\"name\":\"\",\"address\":\"nobody@email.example.com\"}]', 'One', '[]', 1, 1)",
       ),
       env.DB.prepare(
-        "INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at, updated_at) VALUES ('r2', NULL, 'in', 'rejected', 'unknown_recipient', 'sender@example.org', '', 'nobody-else@email.example.com', 'Two', '[]', 2, 2)",
+        "INSERT INTO messages (id, inbox_id, direction, status, status_reason, from_addr, from_name, recipients, subject, attachments, created_at, updated_at) VALUES ('r2', NULL, 'in', 'rejected', 'unknown_recipient', 'sender@example.org', '', '[{\"name\":\"\",\"address\":\"nobody-else@email.example.com\"}]', 'Two', '[]', 2, 2)",
       ),
     ]);
 
@@ -185,7 +185,7 @@ describe("admin", () => {
     expect(res.status).toBe(200);
     const { rejected } = (await res.json()) as any;
     expect(rejected.map((r: any) => r.subject)).toEqual(["Two", "One"]);
-    expect(rejected[0]).toMatchObject({ recipients: "nobody-else@email.example.com", status_reason: "unknown_recipient" });
+    expect(rejected[0]).toMatchObject({ recipients: [{ name: "", address: "nobody-else@email.example.com" }], status_reason: "unknown_recipient" });
   });
 
   it("needs the admin key to list rejected mail", async () => {
@@ -196,7 +196,7 @@ describe("admin", () => {
     const inbox = await createInbox("agent");
     await env.DB.prepare(
       `INSERT INTO messages (id, inbox_id, direction, status, message_id, from_addr, from_name, recipients, subject, attachments, created_at, updated_at)
-       SELECT 'm1', id, 'out', 'sent', '<m@x>', address, '', 'b@x.com', 's', '[]', ?, ? FROM inboxes`,
+       SELECT 'm1', id, 'out', 'sent', '<m@x>', address, '', '[{"name":"","address":"b@x.com"}]', 's', '[]', ?, ? FROM inboxes`,
     ).bind(Date.now() - 2 * 3600_000, Date.now() - 2 * 3600_000).run();
 
     const { domains } = (await (await api("/admin/domains", { key: ADMIN_KEY })).json()) as any;
@@ -212,13 +212,13 @@ describe("admin", () => {
     // can ever arrive for it.
     await env.DB.prepare(
       `INSERT INTO messages (id, inbox_id, direction, status, message_id, from_addr, from_name, recipients, subject, attachments, created_at, updated_at)
-       VALUES ('m1', ?, 'out', 'failed', NULL, ?, '', 'b@x.com', 's', '[]', ?, ?)`,
+       VALUES ('m1', ?, 'out', 'failed', NULL, ?, '', '[{"name":"","address":"b@x.com"}]', 's', '[]', ?, ?)`,
     )
       .bind(inbox.id, inbox.address, old, old)
       .run();
     await env.DB.prepare(
       `INSERT INTO messages (id, inbox_id, direction, status, message_id, from_addr, from_name, recipients, subject, attachments, created_at, updated_at)
-       VALUES ('m2', ?, 'out', 'sent', '<m@x>', ?, '', 'b@x.com', 's', '[]', ?, ?)`,
+       VALUES ('m2', ?, 'out', 'sent', '<m@x>', ?, '', '[{"name":"","address":"b@x.com"}]', 's', '[]', ?, ?)`,
     )
       .bind(inbox.id, inbox.address, old, old)
       .run();
@@ -232,7 +232,7 @@ describe("admin", () => {
     await createInbox("agent");
     await env.DB.prepare(
       `INSERT INTO messages (id, inbox_id, direction, status, message_id, from_addr, from_name, recipients, subject, attachments, created_at, updated_at)
-       SELECT 'm1', id, 'out', 'delivered', '<m@x>', address, '', 'b@x.com', 's', '[]', ?, ? FROM inboxes`,
+       SELECT 'm1', id, 'out', 'delivered', '<m@x>', address, '', '[{"name":"","address":"b@x.com"}]', 's', '[]', ?, ? FROM inboxes`,
     ).bind(Date.now() - 2 * 3600_000, Date.now()).run();
 
     const { domains } = (await (await api("/admin/domains", { key: ADMIN_KEY })).json()) as any;

@@ -1,7 +1,7 @@
 import PostalMime from "postal-mime";
 import { uuidv7 } from "./crypto";
 import type { Env } from "./env";
-import { addresses, fromEmail, saveMessage } from "./mail";
+import { fromEmail, recipientsJson, saveMessage } from "./mail";
 
 export async function handleEmail(message: ForwardableEmailMessage, env: Env): Promise<void> {
   const inbox = await env.DB.prepare("SELECT id FROM inboxes WHERE address = ? AND deleted_at IS NULL")
@@ -15,7 +15,7 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env): P
       `INSERT INTO messages (id, inbox_id, direction, status, status_reason, message_id, from_addr, from_name, recipients, subject, attachments, created_at, updated_at)
        VALUES (?, NULL, 'in', 'rejected', 'unknown_recipient', NULL, ?, '', ?, ?, '[]', ?, ?)`,
     )
-      .bind(uuidv7(), message.from, message.to.toLowerCase(), message.headers.get("subject"), now, now)
+      .bind(uuidv7(), message.from, recipientsJson([{ name: "", address: message.to }]), message.headers.get("subject"), now, now)
       .run();
     message.setReject("Unknown recipient");
     return;
@@ -40,7 +40,7 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env): P
       email.messageId ?? null,
       email.from?.address ?? message.from,
       email.from?.name ?? "",
-      [...addresses(email.to), ...addresses(email.cc)].join(",").toLowerCase(),
+      recipientsJson([...stored.to, ...stored.cc]),
       email.subject ?? null,
       JSON.stringify(stored.attachments),
       now,

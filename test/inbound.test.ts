@@ -16,7 +16,7 @@ describe("incoming mail", () => {
       status: "rejected",
       status_reason: "unknown_recipient",
       from_addr: "sender@example.org",
-      recipients: "nobody@email.example.com",
+      recipients: JSON.stringify([{ name: "", address: "nobody@email.example.com" }]),
       subject: "Spam",
       attachments: "[]",
     });
@@ -43,6 +43,17 @@ describe("incoming mail", () => {
     const stored = await (await env.MAIL.get(`${inboxId}/${row!.id}/message.json`))!.json<any>();
     expect(stored).toMatchObject({ subject: "Report", text: "Hi there\n", from: { name: "Sender", address: "sender@example.org" } });
     expect(await (await env.MAIL.get(`${inboxId}/${row!.id}/0`))!.text()).toBe("file body\n");
+  });
+
+  it("stores every recipient with its name, addresses lower-cased", async () => {
+    await createInbox("agent");
+    await receive(eml({ to: "Agent <Agent@Email.Example.com>", headers: 'Cc: "Smith, Bob" <Bob@Example.org>, ops@example.org\r\n' }));
+    const row = await env.DB.prepare("SELECT recipients FROM messages").first<{ recipients: string }>();
+    expect(JSON.parse(row!.recipients)).toEqual([
+      { name: "Agent", address: "agent@email.example.com" },
+      { name: "Smith, Bob", address: "bob@example.org" },
+      { name: "", address: "ops@example.org" },
+    ]);
   });
 
   it("queues one job per webhook", async () => {

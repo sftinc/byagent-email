@@ -87,7 +87,7 @@ its own prefix:
 <inbox id>/<message id>/1              second attachment, and so on
 ```
 
-Sent mail is stored the same way. D1 holds what lists and filters need: sender, recipients, subject,
+Sent mail is stored the same way. D1 holds what lists and filters need: sender, recipients (each with its name), subject,
 attachment metadata and the timestamps. The raw email is not kept.
 
 ### Attachment links

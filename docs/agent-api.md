@@ -44,8 +44,7 @@ curl -X POST $URL/send -H "Authorization: Bearer $API_KEY" -d '{
 | `attachments` | optional, see below |
 | `reply_to_id` | optional, see below |
 
-A named recipient goes out as `Bob <bob@x.com>`, and the name is kept on the saved copy. Searching by
-`to` still matches addresses only. The sender is always the inbox, as `Name <address>` when the inbox
+A named recipient goes out as `Bob <bob@x.com>`, and the name is kept on the saved copy and in lists, where a `to` search matches it. The sender is always the inbox, as `Name <address>` when the inbox
 has a name. `id` is the saved copy,
 which works with every `/messages/:id` route; `messageId` is the email's `Message-ID` header.
 
@@ -92,7 +91,7 @@ curl "$URL/messages?unread=true" -H "Authorization: Bearer $API_KEY"
 { "messages": [
     { "id": "01a0…", "direction": "in", "status": "received", "status_reason": null,
       "from": { "name": "Bob", "address": "bob@example.org" },
-      "recipients": ["claude@example.com"],
+      "recipients": [{ "name": "Claude", "address": "claude@example.com" }],
       "subject": "Hello", "attachments": [],
       "created_at": 1789853699757, "updated_at": 1789853699757, "read_at": null, "deleted_at": null }
   ],
@@ -105,7 +104,7 @@ Lists never mark anything read. 20 messages per page, newest first.
 |---|---|
 | `direction` | `in` (received, the default), `out` (sent) or `all` |
 | `unread=true` | only messages with no `read_at` |
-| `from`, `to`, `subject` | match part of the value, ignoring case, e.g. `from=@example.org` |
+| `from`, `to`, `subject` | match part of the value, ignoring case, e.g. `from=@example.org`; `from` and `to` match a name or an address |
 | `deleted=true` | deleted messages instead of live ones |
 | `before`, `after` | paging, below |
 

@@ -1,6 +1,6 @@
 import { mintAttachmentUrl } from "./attachments";
 import type { Env, Inbox, Result } from "./env";
-import { type Attachment, loadMessage } from "./mail";
+import { type Attachment, type Contact, loadMessage } from "./mail";
 
 export function findMessage(env: Env, inboxId: string, id: string) {
   // Deleted messages are still readable by id; only changing them 404s.
@@ -47,16 +47,21 @@ export async function listMessages(env: Env, inbox: Inbox, params: ListParams) {
     bound.push(direction);
   }
   if (params.unread) where += " AND read_at IS NULL";
-  const filters: [string | undefined, string][] = [
-    [params.from, "from_addr"],
-    [params.to, "recipients"],
-    [params.subject, "subject"],
-  ];
-  for (const [value, column] of filters) {
-    if (value) {
-      where += ` AND instr(lower(${column}), lower(?)) > 0`;
-      bound.push(value);
-    }
+  // Case-insensitive substring matches. `from` and `to` match a name or an address; `to` looks
+  // inside the JSON, so it never matches the keys or punctuation around them.
+  if (params.from) {
+    where += " AND (instr(lower(from_addr), lower(?)) > 0 OR instr(lower(from_name), lower(?)) > 0)";
+    bound.push(params.from, params.from);
+  }
+  if (params.to) {
+    where +=
+      " AND EXISTS (SELECT 1 FROM json_each(recipients) WHERE instr(lower(json_extract(value, '$.address')), lower(?)) > 0" +
+      " OR instr(lower(json_extract(value, '$.name')), lower(?)) > 0)";
+    bound.push(params.to, params.to);
+  }
+  if (params.subject) {
+    where += " AND instr(lower(subject), lower(?)) > 0";
+    bound.push(params.subject);
   }
   const { before, after } = params;
   if (before && after) return { ok: false, status: 400, error: "Use `before` or `after`, not both" } as const;
@@ -96,7 +101,7 @@ export async function listMessages(env: Env, inbox: Inbox, params: ListParams) {
       messages: page.map(({ from_addr, from_name, ...m }) => ({
         ...m,
         from: { name: from_name, address: from_addr },
-        recipients: m.recipients ? m.recipients.split(",") : [],
+        recipients: JSON.parse(m.recipients) as Contact[],
         attachments: (JSON.parse(m.attachments) as Attachment[]).map((a, index) => ({ index, ...a })),
       })),
       paging: { before: hasOlder ? oldest : null, after: hasNewer ? newest : null },

@@ -37,7 +37,11 @@ describe("sent mail", () => {
         status: "sent",
         status_reason: null,
         from: { name: "", address: inbox.address },
-        recipients: ["a@x.com", "b@x.com", "c@x.com"],
+        recipients: [
+          { name: "", address: "a@x.com" },
+          { name: "", address: "b@x.com" },
+          { name: "", address: "c@x.com" },
+        ],
         subject: "Report",
         attachments: [{ index: 0, filename: "a.txt", type: "text/plain", size: 2, disposition: "attachment" }],
         created_at: expect.any(Number),
@@ -97,8 +101,11 @@ describe("sent mail", () => {
     const full = (await (await api(`/messages/${id}`, { key: inbox.api_key })).json()) as any;
     expect(full.to).toEqual([{ name: "Bob Smith", address: "Bob@x.com" }]);
     expect(full.cc).toEqual([{ name: "", address: "plain@x.com" }]);
-    expect((await list(inbox.api_key, "?direction=out"))[0].recipients).toEqual(["bob@x.com", "plain@x.com"]);
-    expect((await list(inbox.api_key, "?direction=out&to=BOB@")).map((m: any) => m.id)).toEqual([id]);
+    expect((await list(inbox.api_key, "?direction=out"))[0].recipients).toEqual([
+      { name: "Bob Smith", address: "bob@x.com" },
+      { name: "", address: "plain@x.com" },
+    ]);
+    expect((await list(inbox.api_key, "?direction=out&to=smith")).map((m: any) => m.id)).toEqual([id]);
   });
 
   it("lists both directions with direction=all and filters by recipient", async () => {
@@ -109,7 +116,7 @@ describe("sent mail", () => {
     const all = await list(inbox.api_key, "?direction=all");
     expect(all.map((m) => m.direction).sort()).toEqual(["in", "out"]);
     expect((await list(inbox.api_key, "?direction=all&to=C@X.COM")).map((m) => m.direction)).toEqual(["out"]);
-    expect((await list(inbox.api_key, "?to=agent@")).map((m) => m.recipients)).toEqual([["agent@email.example.com"]]);
+    expect((await list(inbox.api_key, "?to=agent@")).map((m) => m.recipients)).toEqual([[{ name: "", address: "agent@email.example.com" }]]);
     expect((await api("/messages?direction=sent", { key: inbox.api_key })).status).toBe(400);
   });
 
