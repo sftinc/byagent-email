@@ -30,6 +30,10 @@ export function toHtml(text: string): string {
 }
 
 // Html as Markdown, so links, lists and tables survive in the text part.
+// Known issue: the parser's cost grows much faster than the input on unclosed tags (15 KB of
+// `<b>x` repeated takes ~20 s of CPU), so replying to a hostile html-only message, or sending
+// messy html with no text, can hit the Worker's CPU limit. Accepted for now; the fix would be a
+// linear converter such as one built on HTMLRewriter.
 export function toText(html: string): string {
   return NodeHtmlMarkdown.translate(html);
 }
