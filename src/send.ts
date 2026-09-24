@@ -3,7 +3,7 @@ const MAX_RECIPIENTS = 50;
 const MAX_ATTACHMENTS = 32;
 
 import type { Env, Inbox, Result } from "./env";
-import { loadMessage, saveSent } from "./mail";
+import { type Contact, loadMessage, saveSent, type StoredMessage } from "./mail";
 import { findMessage } from "./messages";
 import { parseName } from "./validate";
 import { NodeHtmlMarkdown } from "node-html-markdown";
@@ -136,4 +136,74 @@ export async function sendMail(env: Env, inbox: Inbox, body: any): Promise<Resul
   }
   const id = await saveSent(env, inbox, built.message, messageId);
   return { ok: true, data: { id, messageId } };
+}
+
+// Where a reply goes by default. Received mail: its Reply-To, else its sender; reply-all adds
+// everyone it was sent to. Mail this inbox sent: its original recipients, never its bcc.
+function defaults(direction: string, parent: StoredMessage, all: boolean): { to: Contact[]; cc: Contact[] } {
+  if (direction === "out") return { to: parent.to, cc: all ? parent.cc : [] };
+  const to = parent.reply_to.length ? parent.reply_to : parent.from ? [parent.from] : [];
+  return { to, cc: all ? [...parent.to, ...parent.cc] : [] };
+}
+
+// An inherited contact as a recipient. Received names are stored unchecked, so a name sendMail
+// would refuse is dropped and the address kept.
+function inherit(contact: Contact): string | { address: string; name: string } {
+  const name = parseName(contact.name);
+  return name ? { address: contact.address, name } : contact.address;
+}
+
+// Drops this inbox and repeated addresses (ignoring case, first one wins) across to, then cc.
+// An entry with no string address is kept, for sendMail to refuse.
+function cleanUp(inbox: Inbox, to: unknown[], cc: unknown[]): [unknown[], unknown[]] {
+  const seen = new Set([inbox.address.toLowerCase()]);
+  const keep = (r: unknown) => {
+    const address = typeof r === "string" ? r : (r as { address?: unknown } | null)?.address;
+    if (typeof address !== "string") return true;
+    if (seen.has(address.toLowerCase())) return false;
+    seen.add(address.toLowerCase());
+    return true;
+  };
+  return [to.filter(keep), cc.filter(keep)];
+}
+
+function replySubject(subject: string): string {
+  return /^\s*re:/i.test(subject) ? subject : `Re: ${subject}`.trimEnd();
+}
+
+// "On <date>, <name> <address> wrote:", dated when the original was sent, else when it arrived.
+function quoteHeader(parent: StoredMessage, createdAt: number): string {
+  const date = new Date(parent.date ?? "");
+  const when = (Number.isNaN(date.getTime()) ? new Date(createdAt) : date).toUTCString();
+  const from = parent.from;
+  const who = from ? (from.name ? `${from.name} <${from.address}>` : from.address) : "";
+  return `On ${when}, ${who ? `${who} ` : ""}wrote:`;
+}
+
+// Replies to one of the inbox's messages: works out who it goes to, the subject and the quoted
+// original, then hands everything to sendMail, which validates, threads, sends and saves it.
+// A `to` or `cc` in the body replaces the default; a `subject` in the body is ignored.
+export async function replyMail(env: Env, inbox: Inbox, id: string, body: any, all: boolean): Promise<Result<{ id: string; messageId: string }>> {
+  if (!body || typeof body !== "object") return sendMail(env, inbox, body);
+  const row = await findMessage(env, inbox.id, id);
+  const parent = row && (await loadMessage(env, inbox.id, id));
+  if (!row || !parent) return { ok: false, status: 404, error: "Message not found" };
+
+  const fallback = defaults(row.direction, parent, all);
+  const [to, cc] = cleanUp(
+    inbox,
+    body.to !== undefined ? list(body.to) : fallback.to.map(inherit),
+    body.cc !== undefined ? list(body.cc) : fallback.cc.map(inherit),
+  );
+
+  // With nothing written, the original isn't appended, so sendMail answers "`text` or `html` is required".
+  let { text, html } = body;
+  if (filled(text) || filled(html)) {
+    const header = quoteHeader(parent, row.created_at);
+    const mine = { text: filled(text) ? text : toText(html), html: filled(html) ? html : toHtml(text) };
+    const theirs = { text: filled(parent.text) ? parent.text : toText(parent.html ?? ""), html: parent.html ?? toHtml(parent.text) };
+    text = `${mine.text}\n\n${header}\n\n${theirs.text}`;
+    html = `${mine.html}<br><br><div>${escapeHtml(header)}</div><br>${theirs.html}`;
+  }
+  return sendMail(env, inbox, { ...body, to, cc, subject: replySubject(parent.subject), text, html, reply_to_id: id });
 }

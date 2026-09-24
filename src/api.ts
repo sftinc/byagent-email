@@ -8,7 +8,7 @@ import type { Env, Inbox } from "./env";
 import { type Attachment, loadAttachment } from "./mail";
 import { mcp } from "./mcp";
 import { deleteMessage, findMessage, listMessages, markUnread, readMessage, restoreMessage } from "./messages";
-import { sendMail } from "./send";
+import { replyMail, sendMail } from "./send";
 import { reply } from "./reply";
 import { createWebhook, deleteWebhook, listWebhooks, restoreWebhook } from "./webhooks";
 
@@ -107,3 +107,10 @@ app.delete("/webhooks/:id", async (c) => reply(c, await deleteWebhook(c.env, c.g
 app.post("/webhooks/:id/restore", async (c) => reply(c, await restoreWebhook(c.env, c.get("inbox"), c.req.param("id"))));
 
 app.post("/send", async (c) => reply(c, await sendMail(c.env, c.get("inbox"), await c.req.json<any>().catch(() => null))));
+
+app.post("/messages/:id/reply", async (c) =>
+  reply(c, await replyMail(c.env, c.get("inbox"), c.req.param("id"), await c.req.json<any>().catch(() => null), false)),
+);
+app.post("/messages/:id/reply-all", async (c) =>
+  reply(c, await replyMail(c.env, c.get("inbox"), c.req.param("id"), await c.req.json<any>().catch(() => null), true)),
+);

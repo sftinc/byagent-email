@@ -16,6 +16,8 @@ The same inbox is available as MCP tools — see [MCP](mcp.md).
 | Method | Path | |
 |---|---|---|
 | `POST` | `/send` | Send a message, optionally as a reply |
+| `POST` | `/messages/:id/reply` | Reply to a message: recipients, subject and the quoted original filled in |
+| `POST` | `/messages/:id/reply-all` | The same, copying everyone else it went to |
 | `GET` | `/messages` | List messages, newest first, 20 per page |
 | `GET` | `/messages/:id` | Read one in full; marks it read |
 | `GET` | `/attachments/:token` | Fetch an attachment by the link on a read message; no key |
@@ -78,8 +80,30 @@ curl -X POST $URL/send -H "Authorization: Bearer $API_KEY" -d '{
 ```
 
 The Worker sets `In-Reply-To` and `References` from that message, so the reply lands in the same
-conversation in the recipient's mail client. Replies to replies keep the chain. Choose `to` and the
-subject yourself: reply to the message's `reply_to` if it has one, otherwise its `from`.
+conversation in the recipient's mail client. Replies to replies keep the chain. Here you choose `to`
+and the subject yourself; the reply routes below fill them in.
+
+### Reply and reply all
+
+```bash
+curl -X POST $URL/messages/01a0…/reply -H "Authorization: Bearer $API_KEY" -d '{"text": "Got it."}'
+# → {"id":"01a0…","messageId":"<…@example.com>"}
+```
+
+`/messages/:id/reply` answers one message in this inbox, in its thread. It fills in:
+
+- **`to`**: the message's `reply_to`, or its `from` if it has none. For mail this inbox sent, its
+  original `to`.
+- **`cc`** (reply-all only): everyone else it went to — its `to` and `cc` for received mail, its
+  `cc` for sent mail. Never its `bcc`.
+- **`subject`**: `Re: ` and the original's, unless that already starts with `Re:`. A `subject` in
+  the body is ignored.
+- **the original**: below your text, after `On <date>, <sender> wrote:`, in both the text and html
+  parts. Attachments aren't copied.
+
+This inbox's own address and repeated addresses are dropped. The body takes the `/send` fields:
+`text` or `html` (required, not blank), `attachments`, `bcc`, and `to` / `cc`, which replace the
+defaults (`"cc": []` for none). Answers as `/send` does, plus 404 for a message not in this inbox.
 
 ## List messages
 

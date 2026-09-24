@@ -183,18 +183,18 @@ async function call(name: string, args: Record<string, unknown>, key?: string) {
 
 const names = async (key: string) => ((await (await modern("tools/list", {}, { key })).json()) as any).result.tools.map((t: any) => t.name);
 
-const INBOX_TOOLS = ["send_mail", "list_messages", "read_message", "mark_unread", "delete_message", "restore_message", "list_webhooks", "create_webhook", "delete_webhook", "restore_webhook"];
+const INBOX_TOOLS = ["send_mail", "reply", "reply_all", "list_messages", "read_message", "mark_unread", "delete_message", "restore_message", "list_webhooks", "create_webhook", "delete_webhook", "restore_webhook"];
 const ADMIN_TOOLS = ["create_inbox", "list_inboxes", "rename_inbox", "delete_inbox", "restore_inbox", "purge_inbox", "rotate_inbox_key", "list_rejected", "list_domains"];
 
 describe("tool surface", () => {
-  it("an inbox key sees ten tools, the admin key nineteen, in a stable order", async () => {
+  it("an inbox key sees twelve tools, the admin key twenty-one, in a stable order", async () => {
     const inbox = await createInbox("agent");
     expect(await names(inbox.api_key)).toEqual(INBOX_TOOLS);
     expect(await names(ADMIN_KEY)).toEqual([...INBOX_TOOLS, ...ADMIN_TOOLS]);
     expect(await names("nope")).toEqual([]);
   });
 
-  it("every listed tool has a schema, and `inbox` is described on exactly the fifteen with a target", async () => {
+  it("every listed tool has a schema, and `inbox` is described on exactly the seventeen with a target", async () => {
     const tools = ((await (await modern("tools/list", {}, { key: ADMIN_KEY })).json()) as any).result.tools;
     const withInbox = tools.filter((t: any) => t.inputSchema.properties?.inbox).map((t: any) => t.name);
     expect(withInbox).toEqual(INBOX_TOOLS.concat("rename_inbox", "delete_inbox", "restore_inbox", "purge_inbox", "rotate_inbox_key"));
@@ -312,6 +312,22 @@ describe("tools match their REST routes", () => {
       { EMAIL: { send: failing } as any },
     );
     expect(((await failed.json()) as any).result).toMatchObject({ isError: true, structuredContent: { id: expect.any(String), error: "E_DAILY_LIMIT_EXCEEDED" } });
+  });
+
+  it("reply and reply_all answer in the thread", async () => {
+    const inbox = await createInbox("agent");
+    await receive(eml({ headers: "Message-ID: <first@x.com>\r\n" }), inbox.address);
+    const { id } = (await env.DB.prepare("SELECT id FROM messages").first<{ id: string }>())!;
+    const send = vi.fn().mockResolvedValue({ messageId: "<r@x>" });
+    for (const name of ["reply", "reply_all"]) {
+      const res = await rpc(
+        { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: { id, text: "Thanks" } } },
+        { "MCP-Protocol-Version": "2025-11-25", Authorization: `Bearer ${inbox.api_key}` },
+        { EMAIL: { send } as any },
+      );
+      expect(((await res.json()) as any).result.structuredContent).toEqual({ id: expect.any(String), messageId: "<r@x>" });
+      expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ to: [{ email: "sender@example.org", name: "Sender" }], subject: "Re: Hello" }));
+    }
   });
 
   it("webhooks: list, create, delete, restore", async () => {

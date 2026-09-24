@@ -2,7 +2,7 @@ import type { Policy } from "./auth";
 import type { Env, Inbox, Result } from "./env";
 import { createInbox, deleteInbox, listDomains, listInboxes, listRejected, purgeInbox, renameInbox, restoreInbox, rotateInboxKey } from "./inboxes";
 import { deleteMessage, listMessages, markUnread, readMessage, restoreMessage } from "./messages";
-import { sendMail } from "./send";
+import { replyMail, sendMail } from "./send";
 import { createWebhook, deleteWebhook, listWebhooks, restoreWebhook } from "./webhooks";
 
 // One MCP tool: a schema and a thin wrapper over one shared operation. `admin` tools are for the
@@ -30,6 +30,24 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const bool = (v: unknown): boolean => v === true;
 
 const CONTACT = { type: "object", properties: { name: { type: "string" }, address: { type: "string" } }, required: ["name", "address"] };
+const ATTACHMENTS_INPUT = {
+  type: "array",
+  items: { type: "object", properties: { filename: { type: "string" }, type: { type: "string" }, content: { type: "string", description: "base64" } }, required: ["filename", "type", "content"] },
+};
+const REPLY_INPUT = {
+  type: "object",
+  properties: {
+    inbox: INBOX,
+    id: { type: "string", description: "The message to reply to" },
+    to: { description: "Replaces the default recipients: an address, {address, name}, or a list of either" },
+    cc: { description: "Replaces the default cc; [] for none. Same shape as `to`" },
+    bcc: { description: "Same shape as `to`" },
+    text: { type: "string" },
+    html: { type: "string" },
+    attachments: ATTACHMENTS_INPUT,
+  },
+  required: ["id"],
+};
 const ATTACHMENT = {
   type: "object",
   properties: {
@@ -78,15 +96,29 @@ const inboxTools: Tool[] = [
         subject: { type: "string" },
         text: { type: "string" },
         html: { type: "string" },
-        attachments: {
-          type: "array",
-          items: { type: "object", properties: { filename: { type: "string" }, type: { type: "string" }, content: { type: "string", description: "base64" } }, required: ["filename", "type", "content"] },
-        },
+        attachments: ATTACHMENTS_INPUT,
         reply_to_id: ID,
       },
       required: ["to", "subject"],
     },
     run: (env, inbox, args) => sendMail(env, inbox, args),
+  },
+  {
+    name: "reply",
+    description:
+      "Reply to one of the inbox's messages, in its thread. It goes to the message's reply_to or sender (for mail the inbox sent, to its original recipients); " +
+      "the subject is `Re:` the original's, and the original is included below your text. `text` or `html` is required; the other is generated. `to` and `cc` replace the defaults.",
+    policy: "live",
+    inputSchema: REPLY_INPUT,
+    run: (env, inbox, args) => replyMail(env, inbox, str(args.id), args, false),
+  },
+  {
+    name: "reply_all",
+    description:
+      "Like reply, and also copies everyone else the message went to (never its bcc, never this inbox). `to` and `cc` replace the defaults; `cc: []` for none.",
+    policy: "live",
+    inputSchema: REPLY_INPUT,
+    run: (env, inbox, args) => replyMail(env, inbox, str(args.id), args, true),
   },
   {
     name: "list_messages",
