@@ -11,6 +11,11 @@ export default defineConfig(async () => {
       }),
     ],
     // `.claude/` holds git worktrees of this repo, whose test files are copies of these.
-    test: { setupFiles: ["./test/setup.ts"], exclude: [...configDefaults.exclude, "**/.claude/**"] },
+    test: {
+      setupFiles: ["./test/setup.ts"],
+      exclude: [...configDefaults.exclude, "**/.claude/**"],
+      // node-html-markdown's dependencies don't resolve in the Workers pool unless pre-bundled.
+      deps: { optimizer: { ssr: { enabled: true, include: ["node-html-markdown"] } } },
+    },
   };
 });

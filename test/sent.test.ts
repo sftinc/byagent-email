@@ -74,7 +74,7 @@ describe("sent mail", () => {
       subject: "Report",
       date: expect.any(String),
       text: "See attached",
-      html: null,
+      html: '<div style="white-space:pre-wrap">See attached</div>',
       attachments: [{ index: 0, filename: "a.txt", type: "text/plain", size: 2, disposition: "attachment", url: expect.any(String) }],
       headers: [],
       created_at: expect.any(Number),

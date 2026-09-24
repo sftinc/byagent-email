@@ -6,12 +6,32 @@ import type { Env, Inbox, Result } from "./env";
 import { loadMessage, saveSent } from "./mail";
 import { findMessage } from "./messages";
 import { parseName } from "./validate";
+import { NodeHtmlMarkdown } from "node-html-markdown";
 
 type BuildEmailResult = { ok: true; message: EmailMessageBuilder } | { ok: false; status: 400 | 413; error: string };
 
 function list(value: unknown): any[] {
   if (value === undefined) return [];
   return Array.isArray(value) ? value : [value];
+}
+
+// A text or html part counts only when it has something besides whitespace.
+export function filled(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "";
+}
+
+export function escapeHtml(text: string): string {
+  return text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+}
+
+// Plain text as html that shows it as typed: escaped, with line breaks and tabs kept.
+export function toHtml(text: string): string {
+  return `<div style="white-space:pre-wrap">${escapeHtml(text)}</div>`;
+}
+
+// Html as Markdown, so links, lists and tables survive in the text part.
+export function toText(html: string): string {
+  return NodeHtmlMarkdown.translate(html);
 }
 
 // A recipient is "bob@x.com" or {address, name?}. Returns what the send binding takes: a plain
@@ -46,9 +66,12 @@ export function buildEmail(body: any, from: string | EmailAddress): BuildEmailRe
   if (typeof body.subject !== "string" || body.subject === "") {
     return { ok: false, status: 400, error: "`subject` is required" };
   }
-  if (typeof body.text !== "string" && typeof body.html !== "string") {
+  if (!filled(body.text) && !filled(body.html)) {
     return { ok: false, status: 400, error: "`text` or `html` is required" };
   }
+  // Every message carries both parts; whichever the agent left out is generated from the other.
+  const text: string = filled(body.text) ? body.text : toText(body.html);
+  const html: string = filled(body.html) ? body.html : toHtml(body.text);
 
   const attachments = list(body.attachments);
   if (attachments.length > MAX_ATTACHMENTS) {
@@ -70,17 +93,12 @@ export function buildEmail(body: any, from: string | EmailAddress): BuildEmailRe
 
   // Cloudflare's 5 MiB limit applies to the raw content (checked against production).
   const encoder = new TextEncoder();
-  const size =
-    encoder.encode(body.text ?? "").length +
-    encoder.encode(body.html ?? "").length +
-    files.reduce((sum, f) => sum + f.length, 0);
+  const size = encoder.encode(text).length + encoder.encode(html).length + files.reduce((sum, f) => sum + f.length, 0);
   if (size > MAX_BYTES) return { ok: false, status: 413, error: "Message is larger than 5 MiB" };
 
-  const message: EmailMessageBuilder = { from, to, subject: body.subject };
+  const message: EmailMessageBuilder = { from, to, subject: body.subject, text, html };
   if (cc.length) message.cc = cc;
   if (bcc.length) message.bcc = bcc;
-  if (typeof body.text === "string") message.text = body.text;
-  if (typeof body.html === "string") message.html = body.html;
   if (attachments.length) {
     message.attachments = attachments.map((a, i) => ({
       filename: a.filename,

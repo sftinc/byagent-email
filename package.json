@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "hono": "^4.13.8",
+    "node-html-markdown": "^2.0.0",
     "postal-mime": "^3.0.0"
   },
   "devDependencies": {

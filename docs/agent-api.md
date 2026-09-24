@@ -40,7 +40,7 @@ curl -X POST $URL/send -H "Authorization: Bearer $API_KEY" -d '{
 | `to` | required: an address, or a list of them. Each is `"bob@x.com"` or `{"address":"bob@x.com","name":"Bob"}` |
 | `cc`, `bcc` | optional, same shape |
 | `subject` | required |
-| `text`, `html` | at least one; sending both lets the recipient's client choose |
+| `text`, `html` | at least one, not blank. Every message goes out with both: html is generated from text (escaped, line breaks kept), and text from html (as Markdown) |
 | `attachments` | optional, see below |
 | `reply_to_id` | optional, see below |
 

@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { buildEmail } from "../src/send";
+import { buildEmail, toHtml } from "../src/send";
 import { api, createInbox, eml, receive, reset } from "./helpers";
 
 beforeEach(reset);
@@ -28,6 +28,7 @@ describe("buildEmail", () => {
         cc: ["b@x.com"],
         subject: "Hi",
         text: "Hello",
+        html: '<div style="white-space:pre-wrap">Hello</div>',
         attachments: [{ filename: "a.txt", type: "text/plain", content: new Uint8Array([104, 105]), disposition: "attachment" }],
       },
     });
@@ -41,6 +42,9 @@ describe("buildEmail", () => {
     [{ to: [{ address: "a@x.com", name: "Bad\nName" }], subject: "Hi", text: "x" }, "Recipients must be addresses or {address, name}"],
     [{ to: "a@x.com", text: "x" }, "`subject` is required"],
     [{ to: "a@x.com", subject: "Hi" }, "`text` or `html` is required"],
+    [{ to: "a@x.com", subject: "Hi", text: "" }, "`text` or `html` is required"],
+    [{ to: "a@x.com", subject: "Hi", text: "  \n" }, "`text` or `html` is required"],
+    [{ to: "a@x.com", subject: "Hi", text: " ", html: "\t" }, "`text` or `html` is required"],
     [{ to: "a@x.com", subject: "Hi", text: "x", attachments: [{ filename: "a" }] }, "Attachments need `filename`, `type` and base64 `content`"],
     [{ to: "a@x.com", subject: "Hi", text: "x", attachments: [{ filename: "a", type: "text/plain", content: "not base64!" }] }, "Attachment `content` must be valid base64"],
   ])("rejects %j", (body, error) => {
@@ -76,6 +80,23 @@ describe("buildEmail", () => {
     // 2.7M characters but 5.4M bytes in UTF-8: the limit counts bytes.
     expect(buildEmail({ to: "a@x.com", subject: "Hi", text: "é".repeat(2_700_000) }, FROM)).toMatchObject({ ok: false, status: 413 });
   });
+
+  it("fills in whichever of text and html is missing, and keeps both when given", () => {
+    const message = (body: object) => (buildEmail({ to: "a@x.com", subject: "Hi", ...body }, FROM) as any).message;
+    expect(message({ text: "a < b\n\tc" })).toMatchObject({ text: "a < b\n\tc", html: '<div style="white-space:pre-wrap">a &lt; b\n\tc</div>' });
+    expect(message({ html: '<p>Hi <a href="https://x.com">there</a></p>' })).toMatchObject({ text: "Hi [there](https://x.com)" });
+    expect(message({ text: " ", html: "<b>Hi</b>" })).toMatchObject({ text: "**Hi**", html: "<b>Hi</b>" });
+    expect(message({ text: "plain", html: "<i>rich</i>" })).toMatchObject({ text: "plain", html: "<i>rich</i>" });
+  });
+
+  it("counts the generated part toward the 5 MiB limit", () => {
+    // 3 MB of text is under the limit on its own; the html generated from it pushes the message over.
+    expect(buildEmail({ to: "a@x.com", subject: "Hi", text: "a".repeat(3_000_000) }, FROM)).toMatchObject({ ok: false, status: 413 });
+  });
+
+  it("toHtml escapes & < > \"", () => {
+    expect(toHtml('<a href="x">&</a>')).toBe('<div style="white-space:pre-wrap">&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;</div>');
+  });
 });
 
 describe("POST /send", () => {
@@ -85,7 +106,7 @@ describe("POST /send", () => {
     const res = await api("/send", { method: "POST", key, body: { to: "a@x.com", subject: "Hi", text: "Hello" } }, { EMAIL: { send } as any });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: expect.any(String), messageId: "cf-123" });
-    expect(send).toHaveBeenCalledWith({ from: address, to: ["a@x.com"], subject: "Hi", text: "Hello" });
+    expect(send).toHaveBeenCalledWith({ from: address, to: ["a@x.com"], subject: "Hi", text: "Hello", html: '<div style="white-space:pre-wrap">Hello</div>' });
   });
 
   it("sends under the inbox's name when it has one", async () => {
